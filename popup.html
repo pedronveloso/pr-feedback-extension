@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PR Feedback Extractor</title>
+    <style>
+      /* Critical fallback so popup is usable even if bundled CSS fails to load. */
+      html,
+      body {
+        margin: 0;
+        min-width: 420px;
+        min-height: 420px;
+      }
+    </style>
+    <script type="module" src="/src/popup/main.ts"></script>
+  </head>
+  <body>
+    <main class="popup">
+      <header class="popup__header">
+        <h1>PR Feedback Extractor</h1>
+      </header>
+      <div class="popup__actions">
+        <button id="extract-button" type="button">Extract</button>
+        <button id="copy-button" type="button">Copy</button>
+      </div>
+      <p id="status" aria-live="polite"></p>
+      <textarea id="output" readonly spellcheck="false" placeholder="Extracted feedback will appear here."></textarea>
+    </main>
+  </body>
+</html>
