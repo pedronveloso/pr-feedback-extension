@@ -71,7 +71,9 @@ function nodeToMarkdown(node: Node): string {
 }
 
 export function commentBodyToMarkdown(commentBody: Element): string {
-  const markdown = Array.from(commentBody.childNodes).map(nodeToMarkdown).join('');
+  const clone = commentBody.cloneNode(true) as Element;
+  clone.querySelectorAll('.js-suggested-changes-blob').forEach((el) => el.remove());
+  const markdown = Array.from(clone.childNodes).map(nodeToMarkdown).join('');
   return normalizeWhitespace(markdown);
 }
 

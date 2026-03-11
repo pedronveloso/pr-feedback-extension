@@ -6,6 +6,28 @@ function createDocument(html: string): Document {
 }
 
 describe('commentBodyToMarkdown', () => {
+  it('strips suggested-change blocks from comment body', () => {
+    const doc = createDocument(`
+      <div class="js-comment-body">
+        <p>Consider checking the returned <code>Result</code>.</p>
+        <div class="my-2 border rounded-2 js-suggested-changes-blob diff-view">
+          <div class="f6 p-2">Suggested change</div>
+          <table><tbody>
+            <tr><td class="blob-code-deletion">old code</td></tr>
+            <tr><td class="blob-code-addition">return overwriteResult.fold(</td></tr>
+          </tbody></table>
+        </div>
+      </div>
+    `);
+    const body = doc.querySelector('.js-comment-body');
+    expect(body).not.toBeNull();
+
+    const markdown = commentBodyToMarkdown(body!);
+    expect(markdown).toBe('Consider checking the returned `Result`.');
+    expect(markdown).not.toContain('Suggested change');
+    expect(markdown).not.toContain('overwriteResult.fold');
+  });
+
   it('preserves paragraphs and inline code', () => {
     const doc = createDocument('<div class="js-comment-body"><p>Hello <code>world</code>.</p><p>Second para.</p></div>');
     const body = doc.querySelector('.js-comment-body');
