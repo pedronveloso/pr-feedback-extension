@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { extractFeedbackFromDocument, commentBodyToMarkdown } from '../src/core/parser';
+import { extractCommentBlocks } from '../src/core/github';
 
 function createDocument(html: string): Document {
   return new DOMParser().parseFromString(html, 'text/html');
@@ -151,5 +152,29 @@ describe('extractFeedbackFromDocument', () => {
 
     expect(result.entries).toEqual([]);
     expect(result.warnings).toContain('No review threads found. GitHub DOM may have changed or the PR has no inline feedback.');
+  });
+});
+
+describe('extractCommentBlocks', () => {
+  it('preserves DOM order when multiple selectors match in different selector order', () => {
+    const doc = createDocument(`
+      <details class="review-thread-component">
+        <summary><a class="text-mono">src/order.ts</a></summary>
+        <div><span class="js-multi-line-preview-start">+1</span> to <span class="js-multi-line-preview-end">+2</span></div>
+        <div class="js-comment review-comment">
+          <div class="js-comment-body"><p>First in DOM</p></div>
+        </div>
+        <div class="js-inline-comments-container">
+          <div class="js-comment review-comment"><div class="js-comment-body"><p>Second in DOM</p></div></div>
+        </div>
+      </details>
+    `);
+
+    const thread = doc.querySelector('.review-thread-component');
+    expect(thread).not.toBeNull();
+
+    const comments = extractCommentBlocks(thread!);
+
+    expect(comments.map((comment) => comment.body)).toEqual(['First in DOM', 'Second in DOM']);
   });
 });

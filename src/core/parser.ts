@@ -21,7 +21,8 @@ export function extractFeedbackFromDocument(doc: Document): FeedbackExtractionRe
       return;
     }
 
-    const comments = extractCommentBlocks(thread);
+    const lineRange = extractLineRange(thread);
+    const comments = extractCommentBlocks(thread, lineRange);
     if (comments.length === 0) {
       return;
     }
@@ -31,7 +32,6 @@ export function extractFeedbackFromDocument(doc: Document): FeedbackExtractionRe
       orderedFilePaths.push(filePath);
     }
 
-    const lineRange = extractLineRange(thread);
     if (lineRange.startLine === null && lineRange.endLine === null) {
       warnings.push(`Extracted comments for ${filePath} without a line range.`);
     }

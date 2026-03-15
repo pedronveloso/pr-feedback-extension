@@ -32,7 +32,13 @@ function queryAll(root: ParentNode, selectors: string[]): Element[] {
     }
   }
 
-  return Array.from(seen);
+  return Array.from(seen).sort((left, right) => {
+    if (left === right) {
+      return 0;
+    }
+
+    return left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1;
+  });
 }
 
 function parseLineNumber(text: string | null | undefined): number | null {
@@ -141,8 +147,7 @@ export function extractLineRange(thread: Element): LineRange {
   };
 }
 
-export function extractCommentBlocks(thread: Element): FeedbackComment[] {
-  const lineRange = extractLineRange(thread);
+export function extractCommentBlocks(thread: Element, lineRange: LineRange = extractLineRange(thread)): FeedbackComment[] {
 
   const inlineComments = queryAll(thread, COMMENT_BODY_SELECTORS)
     .map((comment) => commentBodyToMarkdown(comment))
