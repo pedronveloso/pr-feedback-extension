@@ -4,56 +4,48 @@ import { describe, expect, it } from 'vitest';
 import { extractFeedbackFromDocument } from '../src/core/parser';
 import { formatFeedback } from '../src/core/formatter';
 
+function loadFixture(name: string): string {
+  return readFileSync(resolve(process.cwd(), 'tests/fixtures', name), 'utf8');
+}
+
 describe('fixture integration', () => {
   it('extracts feedback from PR with suggested changes, filtering out suggestion blocks', () => {
-    const html = readFileSync(
-      resolve(process.cwd(), 'examples/Fix_several fixes march 10 2026 by pedronveloso · Pull Request #32 · pedronveloso_altsea.html'),
-      'utf8'
-    );
+    const html = loadFixture('suggested-changes.html');
     const doc = new DOMParser().parseFromString(html, 'text/html');
 
     const result = extractFeedbackFromDocument(doc);
     const output = formatFeedback(result.entries);
 
-    // Should contain the two file paths
-    expect(output).toContain('AccountActivity.kt');
-    expect(output).toContain('AccountPullToRefresh.kt');
+    expect(output).toContain('src/notifications/timer.ts');
+    expect(output).toContain('src/notifications/pull-to-refresh.ts');
 
-    // Should contain reviewer prose
     expect(output).toContain('auto-dismiss timer');
     expect(output).toContain('Result<Unit>');
     expect(output).toContain('From lines');
 
-    // Should NOT contain suggested-change content
     expect(output).not.toContain('Suggested change');
     expect(output).not.toContain('overwriteResult.fold(');
   });
 
   it('extracts expected feedback groups from exported GitHub PR page', () => {
-    const html = readFileSync(resolve(process.cwd(), 'examples/github-pr-feedback-entire-page.html'), 'utf8');
+    const html = loadFixture('grouped-feedback.html');
     const doc = new DOMParser().parseFromString(html, 'text/html');
 
     const result = extractFeedbackFromDocument(doc);
     const output = formatFeedback(result.entries);
 
     expect(result.entries.length).toBeGreaterThanOrEqual(3);
-    expect(output).toContain('On `app/src/main/java/app/altsea/ui/onboarding/OnboardingFlow.kt`:');
-    expect(output).toContain('On `app/src/main/java/app/altsea/ui/onboarding/FastModeNotificationPermissionScreen.kt`:');
-    expect(output).toContain('On `app/src/androidTest/java/app/altsea/OnboardingE2ETest.kt`:');
+    expect(output).toContain('On `src/onboarding/flow.ts`:');
+    expect(output).toContain('On `src/onboarding/notifications-screen.ts`:');
+    expect(output).toContain('On `tests/onboarding.e2e.ts`:');
     expect(output).toContain('From lines');
-    expect(output).toContain('`pages` is built from `shouldShowFastModeNotificationPermission`');
+    expect(output).toContain('`pages` is built from `shouldShowNotificationsPrompt`');
     expect(output).toContain('`onNext()` can be triggered twice');
     expect(output).toContain('This helper clicks the notifications-allow CTA');
   });
 
   it('extracts automated review feedback from the newer GitHub files UI export', () => {
-    const html = readFileSync(
-      resolve(
-        process.cwd(),
-        'examples/Feedback submission function by pedronveloso · Pull Request #7 · pedronveloso_altsea-supabase.html'
-      ),
-      'utf8'
-    );
+    const html = loadFixture('automated-review.html');
     const doc = new DOMParser().parseFromString(html, 'text/html');
 
     const result = extractFeedbackFromDocument(doc);

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+  <body>
+    <details class="review-thread-component">
+      <summary>
+        <a class="text-mono">src/notifications/timer.ts</a>
+      </summary>
+      <div>
+        <span class="js-multi-line-preview-start">+14</span>
+        to
+        <span class="js-multi-line-preview-end">+18</span>
+      </div>
+      <div class="js-inline-comments-container">
+        <div class="js-comment review-comment">
+          <div class="js-comment-body">
+            <p>Consider resetting the auto-dismiss timer when retry succeeds.</p>
+            <p>It should still return <code>Result&lt;Unit&gt;</code> consistently.</p>
+            <div class="js-suggested-changes-blob">
+              <div>Suggested change</div>
+              <pre>overwriteResult.fold(</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+    <details class="review-thread-component">
+      <summary>
+        <a class="text-mono">src/notifications/pull-to-refresh.ts</a>
+      </summary>
+      <div>
+        <span class="js-multi-line-preview-start">+40</span>
+        to
+        <span class="js-multi-line-preview-end">+42</span>
+      </div>
+      <div class="js-inline-comments-container">
+        <div class="js-comment review-comment">
+          <div class="js-comment-body">
+            <p>Keep the refresh state isolated from the auto-dismiss timer logic.</p>
+          </div>
+        </div>
+      </div>
+    </details>
+  </body>
+</html>
