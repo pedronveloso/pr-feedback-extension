@@ -22,6 +22,7 @@ describe('fixture integration', () => {
     // Should contain reviewer prose
     expect(output).toContain('auto-dismiss timer');
     expect(output).toContain('Result<Unit>');
+    expect(output).toContain('From lines');
 
     // Should NOT contain suggested-change content
     expect(output).not.toContain('Suggested change');
@@ -39,6 +40,7 @@ describe('fixture integration', () => {
     expect(output).toContain('On `app/src/main/java/app/altsea/ui/onboarding/OnboardingFlow.kt`:');
     expect(output).toContain('On `app/src/main/java/app/altsea/ui/onboarding/FastModeNotificationPermissionScreen.kt`:');
     expect(output).toContain('On `app/src/androidTest/java/app/altsea/OnboardingE2ETest.kt`:');
+    expect(output).toContain('From lines');
     expect(output).toContain('`pages` is built from `shouldShowFastModeNotificationPermission`');
     expect(output).toContain('`onNext()` can be triggered twice');
     expect(output).toContain('This helper clicks the notifications-allow CTA');
@@ -58,17 +60,34 @@ describe('fixture integration', () => {
     const output = formatFeedback(result.entries);
 
     expect(result.entries).toEqual([
-      {
+      expect.objectContaining({
         filePath: 'supabase/functions/feedback-submit/logic.ts',
         comments: expect.arrayContaining([
-          expect.stringContaining('`safeAttachmentName` is produced by `sanitizeAttachmentName()`'),
-          expect.stringContaining('attachment MIME type validation is overly strict'),
-          expect.stringContaining('`allowed_mentions`'),
-          expect.stringContaining('strict per-field size limits')
+          expect.objectContaining({
+            startLine: 191,
+            endLine: 194,
+            body: expect.stringContaining('`safeAttachmentName` is produced by `sanitizeAttachmentName()`')
+          }),
+          expect.objectContaining({
+            startLine: 195,
+            endLine: 199,
+            body: expect.stringContaining('attachment MIME type validation is overly strict')
+          }),
+          expect.objectContaining({
+            startLine: 242,
+            endLine: 252,
+            body: expect.stringContaining('`allowed_mentions`')
+          }),
+          expect.objectContaining({
+            startLine: 258,
+            endLine: 272,
+            body: expect.stringContaining('strict per-field size limits')
+          })
         ])
-      }
+      })
     ]);
     expect(output).toContain('On `supabase/functions/feedback-submit/logic.ts`:');
+    expect(output).toContain('From lines 195 to 199:');
     expect(output).toContain('`allowed_mentions`');
     expect(output).toContain('strict per-field size limits');
   });

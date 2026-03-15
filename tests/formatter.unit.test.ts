@@ -6,13 +6,16 @@ describe('formatFeedback', () => {
     const output = formatFeedback([
       {
         filePath: 'src/A.kt',
-        comments: ['One', 'Two']
+        comments: [
+          { startLine: 10, endLine: 12, body: 'One' },
+          { startLine: 18, endLine: 18, body: 'Two' }
+        ]
       }
     ]);
 
     expect(output).toContain('On `src/A.kt`:');
-    expect(output).toContain('"""\nOne\n"""');
-    expect(output).toContain('"""\nTwo\n"""');
+    expect(output).toContain('From lines 10 to 12:\n"""\nOne\n"""');
+    expect(output).toContain('From line 18:\n"""\nTwo\n"""');
   });
 
   it('returns empty-state message', () => {

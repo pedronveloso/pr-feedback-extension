@@ -83,11 +83,47 @@ function extractFilePath(thread: Element): string | null {
   return filePath || null;
 }
 
-function extractCommentBlocks(thread: Element): string[] {
+function parseLineNumber(text: string | null | undefined): number | null {
+  if (!text) return null;
+  const digits = text.replace(/[^\d]/g, '');
+  if (!digits) return null;
+  const line = Number.parseInt(digits, 10);
+  return Number.isFinite(line) ? line : null;
+}
+
+function extractLineRange(thread: Element): { startLine: number | null; endLine: number | null } {
+  const startLine = parseLineNumber(thread.querySelector('.js-multi-line-preview-start')?.textContent);
+  const endLine = parseLineNumber(thread.querySelector('.js-multi-line-preview-end')?.textContent);
+
+  if (startLine !== null || endLine !== null) {
+    return {
+      startLine,
+      endLine: endLine ?? startLine
+    };
+  }
+
+  const visibleLineNumbers = Array.from(thread.querySelectorAll('[data-line-number]'))
+    .map((node) => parseLineNumber(node.getAttribute('data-line-number')))
+    .filter((line): line is number => line !== null);
+
+  if (visibleLineNumbers.length === 0) {
+    return { startLine: null, endLine: null };
+  }
+
+  return {
+    startLine: visibleLineNumbers[0],
+    endLine: visibleLineNumbers[visibleLineNumbers.length - 1]
+  };
+}
+
+function extractCommentBlocks(thread: Element): FileFeedbackEntry['comments'] {
+  const lineRange = extractLineRange(thread);
+
   const comments = Array.from(thread.querySelectorAll('.js-inline-comments-container .js-comment.review-comment .js-comment-body'))
     .map((comment) => commentBodyToMarkdown(comment))
     .map((comment) => comment.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((body) => ({ ...lineRange, body }));
 
   const automatedComments = Array.from(
     thread.querySelectorAll('react-partial[partial-name="automated-review-comment"] script[data-target="react-partial.embeddedData"]')
@@ -125,9 +161,17 @@ function extractCommentBlocks(thread: Element): string[] {
         return null;
       }
     })
-    .filter((comment): comment is string => Boolean(comment));
+    .filter((comment): comment is string => Boolean(comment))
+    .map((body) => ({ ...lineRange, body }));
 
-  return Array.from(new Set([...comments, ...automatedComments]));
+  const deduped = new Map<string, FileFeedbackEntry['comments'][number]>();
+
+  for (const comment of [...comments, ...automatedComments]) {
+    const key = `${comment.startLine ?? ''}:${comment.endLine ?? ''}:${comment.body}`;
+    deduped.set(key, comment);
+  }
+
+  return Array.from(deduped.values());
 }
 
 export function extractFeedbackFromDocument(doc: Document): FeedbackExtractionResult {

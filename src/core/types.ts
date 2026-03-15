@@ -1,6 +1,12 @@
+export interface FeedbackComment {
+  body: string;
+  startLine: number | null;
+  endLine: number | null;
+}
+
 export interface FileFeedbackEntry {
   filePath: string;
-  comments: string[];
+  comments: FeedbackComment[];
 }
 
 export interface FeedbackExtractionResult {
