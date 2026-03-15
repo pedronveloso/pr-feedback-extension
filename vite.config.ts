@@ -1,5 +1,8 @@
-import { defineConfig } from 'vite';
-import { resolve } from 'node:path';
+import { defineConfig } from 'vitest/config';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const rootDir = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   base: './',
@@ -8,9 +11,9 @@ export default defineConfig({
     emptyOutDir: true,
     rollupOptions: {
       input: {
-        popup: resolve(__dirname, 'popup.html'),
-        content: resolve(__dirname, 'src/content/index.ts'),
-        'service-worker': resolve(__dirname, 'src/background/service-worker.ts')
+        popup: resolve(rootDir, 'popup.html'),
+        content: resolve(rootDir, 'src/content/index.ts'),
+        'service-worker': resolve(rootDir, 'src/background/service-worker.ts')
       },
       output: {
         entryFileNames: '[name].js',

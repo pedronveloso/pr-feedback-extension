@@ -1,19 +1,27 @@
 import { extractFeedbackFromDocument } from '../core/parser';
 import { formatFeedback } from '../core/formatter';
+import { isExtractFeedbackRequest } from '../shared/messages';
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!message || message.type !== 'EXTRACT_FEEDBACK') {
+  if (!isExtractFeedbackRequest(message)) {
     return;
   }
 
-  const extraction = extractFeedbackFromDocument(document);
-  const output = formatFeedback(extraction.entries);
+  try {
+    const extraction = extractFeedbackFromDocument(document);
+    const output = formatFeedback(extraction.entries);
 
-  sendResponse({
-    ok: true,
-    output,
-    warnings: extraction.warnings
-  });
+    sendResponse({
+      ok: true,
+      output,
+      warnings: extraction.warnings
+    });
+  } catch {
+    sendResponse({
+      ok: false,
+      error: 'EXTRACTION_FAILED'
+    });
+  }
 
   return true;
 });
