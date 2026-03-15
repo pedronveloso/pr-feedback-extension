@@ -43,4 +43,33 @@ describe('fixture integration', () => {
     expect(output).toContain('`onNext()` can be triggered twice');
     expect(output).toContain('This helper clicks the notifications-allow CTA');
   });
+
+  it('extracts automated review feedback from the newer GitHub files UI export', () => {
+    const html = readFileSync(
+      resolve(
+        process.cwd(),
+        'examples/Feedback submission function by pedronveloso · Pull Request #7 · pedronveloso_altsea-supabase.html'
+      ),
+      'utf8'
+    );
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    const result = extractFeedbackFromDocument(doc);
+    const output = formatFeedback(result.entries);
+
+    expect(result.entries).toEqual([
+      {
+        filePath: 'supabase/functions/feedback-submit/logic.ts',
+        comments: expect.arrayContaining([
+          expect.stringContaining('`safeAttachmentName` is produced by `sanitizeAttachmentName()`'),
+          expect.stringContaining('attachment MIME type validation is overly strict'),
+          expect.stringContaining('`allowed_mentions`'),
+          expect.stringContaining('strict per-field size limits')
+        ])
+      }
+    ]);
+    expect(output).toContain('On `supabase/functions/feedback-submit/logic.ts`:');
+    expect(output).toContain('`allowed_mentions`');
+    expect(output).toContain('strict per-field size limits');
+  });
 });

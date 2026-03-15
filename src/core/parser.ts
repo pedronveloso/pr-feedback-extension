@@ -84,11 +84,50 @@ function extractFilePath(thread: Element): string | null {
 }
 
 function extractCommentBlocks(thread: Element): string[] {
-  const comments = Array.from(thread.querySelectorAll('.js-inline-comments-container .js-comment.review-comment .js-comment-body'));
-  return comments
+  const comments = Array.from(thread.querySelectorAll('.js-inline-comments-container .js-comment.review-comment .js-comment-body'))
     .map((comment) => commentBodyToMarkdown(comment))
     .map((comment) => comment.trim())
     .filter(Boolean);
+
+  const automatedComments = Array.from(
+    thread.querySelectorAll('react-partial[partial-name="automated-review-comment"] script[data-target="react-partial.embeddedData"]')
+  )
+    .map((script) => {
+      const raw = script.textContent?.trim();
+      if (!raw) return null;
+
+      try {
+        const data = JSON.parse(raw) as {
+          props?: {
+            comment?: {
+              bodyHTML?: string;
+              body?: string;
+              automatedComment?: {
+                message?: string;
+              };
+            };
+          };
+        };
+
+        const bodyHtml =
+          data.props?.comment?.bodyHTML ??
+          data.props?.comment?.automatedComment?.message ??
+          null;
+
+        if (bodyHtml) {
+          const container = thread.ownerDocument.createElement('div');
+          container.innerHTML = bodyHtml;
+          return commentBodyToMarkdown(container).trim();
+        }
+
+        return data.props?.comment?.body?.trim() ?? null;
+      } catch {
+        return null;
+      }
+    })
+    .filter((comment): comment is string => Boolean(comment));
+
+  return Array.from(new Set([...comments, ...automatedComments]));
 }
 
 export function extractFeedbackFromDocument(doc: Document): FeedbackExtractionResult {

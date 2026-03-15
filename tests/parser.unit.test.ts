@@ -79,4 +79,28 @@ describe('extractFeedbackFromDocument', () => {
     const { entries } = extractFeedbackFromDocument(doc);
     expect(entries).toHaveLength(0);
   });
+
+  it('extracts automated review comments embedded in react partial JSON', () => {
+    const doc = createDocument(`
+      <details class="review-thread-component">
+        <summary><a class="text-mono">src/server.ts</a></summary>
+        <div class="js-inline-comments-container">
+          <react-partial partial-name="automated-review-comment">
+            <script type="application/json" data-target="react-partial.embeddedData">
+              {"props":{"comment":{"bodyHTML":"<p>Guard <code>payload.name</code> length before sending.</p>"}}}
+            </script>
+          </react-partial>
+        </div>
+      </details>
+    `);
+
+    const { entries } = extractFeedbackFromDocument(doc);
+
+    expect(entries).toEqual([
+      {
+        filePath: 'src/server.ts',
+        comments: ['Guard `payload.name` length before sending.']
+      }
+    ]);
+  });
 });
