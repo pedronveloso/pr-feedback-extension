@@ -122,4 +122,34 @@ describe('extractFeedbackFromDocument', () => {
       }
     ]);
   });
+
+  it('uses file-path and line-range fallback attributes when GitHub markup differs', () => {
+    const doc = createDocument(`
+      <details class="review-thread-component" data-start-line="44" data-end-line="48">
+        <summary><span data-path="src/feature.ts"></span></summary>
+        <div class="js-comment review-comment">
+          <div class="js-comment-body"><p>Fallback selectors still work.</p></div>
+        </div>
+      </details>
+    `);
+
+    const { entries, warnings } = extractFeedbackFromDocument(doc);
+
+    expect(entries).toEqual([
+      {
+        filePath: 'src/feature.ts',
+        comments: [{ startLine: 44, endLine: 48, body: 'Fallback selectors still work.' }]
+      }
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('warns when no review threads are present', () => {
+    const doc = createDocument('<main><p>No inline comments.</p></main>');
+
+    const result = extractFeedbackFromDocument(doc);
+
+    expect(result.entries).toEqual([]);
+    expect(result.warnings).toContain('No review threads found. GitHub DOM may have changed or the PR has no inline feedback.');
+  });
 });

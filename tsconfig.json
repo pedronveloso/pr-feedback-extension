@@ -7,7 +7,7 @@
     "noEmit": true,
     "skipLibCheck": true,
     "lib": ["ES2022", "DOM"],
-    "types": ["chrome"]
+    "types": ["chrome", "node", "vitest/globals"]
   },
   "include": ["src", "tests", "vite.config.ts"]
 }
