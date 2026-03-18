@@ -57,6 +57,10 @@ interface PopupErrorDescriptor {
   status: string;
 }
 
+type ExtractionAttempt =
+  | { kind: 'response'; response: ExtractFeedbackResponse }
+  | { kind: 'error'; descriptor: PopupErrorDescriptor; error?: unknown };
+
 function getPopupElements(doc: Document): PopupElements {
   const output = doc.querySelector<HTMLTextAreaElement>('#output');
   const status = doc.querySelector<HTMLParagraphElement>('#status');
@@ -158,6 +162,45 @@ export function mountPopup({
     elements.status.textContent = message;
   };
 
+  const showPopupError = (descriptor: PopupErrorDescriptor, error?: unknown): void => {
+    setStatus(descriptor.status);
+    elements.output.value = formatPopupErrorReport(descriptor, error);
+  };
+
+  const renderExtractionResponse = (response: ExtractFeedbackResponse): void => {
+    if (!isExtractFeedbackResponse(response)) {
+      showPopupError({
+        code: 'PRFE-POPUP-006',
+        heading: 'Received an invalid response from the content script.',
+        details: ['The extension could not read diagnostics for this page.'],
+        status: 'Received an invalid response from the content script.'
+      });
+      return;
+    }
+
+    if (!response.ok) {
+      const message = response.error === 'UNSUPPORTED_PAGE' ? 'Open a GitHub pull request page and try again.' : 'Could not extract feedback from this page.';
+      setStatus(message);
+      elements.output.value = response.diagnostics
+        ? formatDiagnosticsReport(response.diagnostics, 'Extraction failed.')
+        : `${message}\n\nNo diagnostics were returned by the content script.`;
+      return;
+    }
+
+    if (response.diagnostics.entryCount === 0) {
+      elements.output.value = formatDiagnosticsReport(response.diagnostics, 'No extractable feedback was found.');
+      setStatus(
+        response.warnings.length > 0
+          ? `No extractable feedback found. ${response.warnings.length} warning(s) available below.`
+          : 'No extractable feedback found on this page.'
+      );
+      return;
+    }
+
+    elements.output.value = response.output;
+    setStatus(response.warnings.length > 0 ? `Extracted with ${response.warnings.length} warning(s).` : 'Extracted successfully.');
+  };
+
   const getActiveTabInfo = async (): Promise<ActiveTabInfo> => {
     const tabs = await tabsApi.query({ active: true, currentWindow: true });
     return {
@@ -211,6 +254,87 @@ export function mountPopup({
     throw lastError ?? new Error('Could not verify content-script readiness.');
   };
 
+  const recoverExtractionResponse = async (activeTab: ActiveTabInfo, initialError: unknown): Promise<ExtractionAttempt> => {
+    const isGitHubPr = isGitHubPullRequestUrl(activeTab.url);
+
+    if (!isGitHubPr) {
+      return {
+        kind: 'error',
+        descriptor: {
+          code: 'PRFE-POPUP-002',
+          heading: 'Open a GitHub pull request page and try again.',
+          details: ['The active tab URL does not look like a supported GitHub pull request page.'],
+          status: 'Open a GitHub pull request page and try again.'
+        },
+        error: initialError
+      };
+    }
+
+    if (!scriptingApi) {
+      return {
+        kind: 'error',
+        descriptor: {
+          code: 'PRFE-POPUP-003',
+          heading: 'Could not contact the content script.',
+          details: [
+            'The popup could not reach the current content script and script reinjection is unavailable.',
+            'Likely causes:',
+            '- The extension was reloaded after this tab was opened',
+            '- The page needs a refresh so the content script can attach',
+            'Try reloading the unpacked extension and refreshing the GitHub pull request tab.'
+          ],
+          status: 'Refresh the pull request page and try again.'
+        },
+        error: initialError
+      };
+    }
+
+    try {
+      await tryInjectContentScript(activeTab.id!);
+    } catch (injectionError) {
+      return {
+        kind: 'error',
+        descriptor: {
+          code: 'PRFE-POPUP-004',
+          heading: 'Could not inject the content script into this tab.',
+          details: [
+            'The popup tried to inject `content.js`, but the browser rejected the request.',
+            'Refresh the GitHub pull request tab and rerun extraction.'
+          ],
+          status: 'Refresh the pull request page and try again.'
+        },
+        error: injectionError
+      };
+    }
+
+    try {
+      await waitForContentScriptReady(activeTab.id!);
+      return { kind: 'response', response: await requestExtraction(activeTab.id!) };
+    } catch (retryError) {
+      return {
+        kind: 'error',
+        descriptor: {
+          code: 'PRFE-POPUP-005',
+          heading: 'Could not contact the content script after reinjection.',
+          details: [
+            'The popup retried extraction after injecting `content.js`, but the tab still did not answer.',
+            'Refresh the GitHub pull request tab and rerun extraction.'
+          ],
+          status: 'Refresh the pull request page and try again.'
+        },
+        error: retryError
+      };
+    }
+  };
+
+  const requestExtractionWithRecovery = async (activeTab: ActiveTabInfo): Promise<ExtractionAttempt> => {
+    try {
+      return { kind: 'response', response: await requestExtraction(activeTab.id!) };
+    } catch (initialError) {
+      return recoverExtractionResponse(activeTab, initialError);
+    }
+  };
+
   const extractFeedback = async (): Promise<void> => {
     elements.extractButton.disabled = true;
     setStatus('Extracting...');
@@ -218,8 +342,7 @@ export function mountPopup({
     try {
       const activeTab = await getActiveTabInfo();
       if (!activeTab.id) {
-        setStatus('No active tab found.');
-        elements.output.value = formatPopupErrorReport({
+        showPopupError({
           code: 'PRFE-POPUP-001',
           heading: 'No active tab found.',
           details: ['The popup could not resolve an active browser tab to extract from.'],
@@ -228,125 +351,20 @@ export function mountPopup({
         return;
       }
 
-      let response: ExtractFeedbackResponse;
-
-      try {
-        response = await requestExtraction(activeTab.id);
-      } catch (initialError) {
-        const isGitHubPr = isGitHubPullRequestUrl(activeTab.url);
-
-        if (!isGitHubPr) {
-          const descriptor = {
-            code: 'PRFE-POPUP-002',
-            heading: 'Open a GitHub pull request page and try again.',
-            details: ['The active tab URL does not look like a supported GitHub pull request page.'],
-            status: 'Open a GitHub pull request page and try again.'
-          } satisfies PopupErrorDescriptor;
-
-          setStatus(descriptor.status);
-          elements.output.value = formatPopupErrorReport(descriptor, initialError);
-          return;
-        }
-
-        if (!scriptingApi) {
-          const descriptor = {
-            code: 'PRFE-POPUP-003',
-            heading: 'Could not contact the content script.',
-            details: [
-              'The popup could not reach the current content script and script reinjection is unavailable.',
-              'Likely causes:',
-              '- The extension was reloaded after this tab was opened',
-              '- The page needs a refresh so the content script can attach',
-              'Try reloading the unpacked extension and refreshing the GitHub pull request tab.'
-            ],
-            status: 'Refresh the pull request page and try again.'
-          } satisfies PopupErrorDescriptor;
-
-          setStatus(descriptor.status);
-          elements.output.value = formatPopupErrorReport(descriptor, initialError);
-          return;
-        }
-
-        try {
-          await tryInjectContentScript(activeTab.id);
-        } catch (injectionError) {
-          const descriptor = {
-            code: 'PRFE-POPUP-004',
-            heading: 'Could not inject the content script into this tab.',
-            details: [
-              'The popup tried to inject `content.js`, but the browser rejected the request.',
-              'Refresh the GitHub pull request tab and rerun extraction.'
-            ],
-            status: 'Refresh the pull request page and try again.'
-          } satisfies PopupErrorDescriptor;
-
-          setStatus(descriptor.status);
-          elements.output.value = formatPopupErrorReport(descriptor, injectionError);
-          return;
-        }
-
-        try {
-          await waitForContentScriptReady(activeTab.id);
-          response = await requestExtraction(activeTab.id);
-        } catch (retryError) {
-          const descriptor = {
-            code: 'PRFE-POPUP-005',
-            heading: 'Could not contact the content script after reinjection.',
-            details: [
-              'The popup retried extraction after injecting `content.js`, but the tab still did not answer.',
-              'Refresh the GitHub pull request tab and rerun extraction.'
-            ],
-            status: 'Refresh the pull request page and try again.'
-          } satisfies PopupErrorDescriptor;
-
-          setStatus(descriptor.status);
-          elements.output.value = formatPopupErrorReport(descriptor, retryError);
-          return;
-        }
-      }
-
-      if (!isExtractFeedbackResponse(response)) {
-        setStatus('Received an invalid response from the content script.');
-        elements.output.value = formatPopupErrorReport({
-          code: 'PRFE-POPUP-006',
-          heading: 'Received an invalid response from the content script.',
-          details: ['The extension could not read diagnostics for this page.'],
-          status: 'Received an invalid response from the content script.'
-        });
+      const attempt = await requestExtractionWithRecovery(activeTab);
+      if (attempt.kind === 'error') {
+        showPopupError(attempt.descriptor, attempt.error);
         return;
       }
 
-      if (!response.ok) {
-        const message = response.error === 'UNSUPPORTED_PAGE' ? 'Open a GitHub pull request page and try again.' : 'Could not extract feedback from this page.';
-        setStatus(message);
-        elements.output.value = response.diagnostics
-          ? formatDiagnosticsReport(response.diagnostics, 'Extraction failed.')
-          : `${message}\n\nNo diagnostics were returned by the content script.`;
-        return;
-      }
-
-      if (response.diagnostics.entryCount === 0) {
-        elements.output.value = formatDiagnosticsReport(response.diagnostics, 'No extractable feedback was found.');
-        setStatus(
-          response.warnings.length > 0
-            ? `No extractable feedback found. ${response.warnings.length} warning(s) available below.`
-            : 'No extractable feedback found on this page.'
-        );
-        return;
-      }
-
-      elements.output.value = response.output;
-      setStatus(response.warnings.length > 0 ? `Extracted with ${response.warnings.length} warning(s).` : 'Extracted successfully.');
+      renderExtractionResponse(attempt.response);
     } catch (error) {
-      const descriptor = {
+      showPopupError({
         code: 'PRFE-POPUP-999',
         heading: 'Extraction failed unexpectedly inside the popup.',
         details: ['This is an unhandled popup-side failure. Check the popup extraction flow in `src/popup/app.ts`.'],
         status: 'Refresh the pull request page and try again.'
-      } satisfies PopupErrorDescriptor;
-
-      setStatus(descriptor.status);
-      elements.output.value = formatPopupErrorReport(descriptor, error);
+      }, error);
     } finally {
       elements.extractButton.disabled = false;
     }
