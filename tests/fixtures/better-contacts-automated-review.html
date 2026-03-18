@@ -1,0 +1,85 @@
+<!doctype html>
+<html>
+  <body>
+    <div class="js-inline-comments-container">
+      <table>
+        <tbody>
+          <tr><td data-line-number="211"></td></tr>
+          <tr><td data-line-number="212"></td></tr>
+        </tbody>
+      </table>
+      <div id="discussion_r2938946634">
+        <react-partial partial-name="automated-review-comment">
+          <script type="application/json" data-target="react-partial.embeddedData">
+            {
+              "props": {
+                "comment": {
+                  "automatedComment": {
+                    "message": "<p>This URL is hardcoded inline, while Terms/Privacy use <code>Constants.TERMS_URL</code> / <code>Constants.PRIVACY_POLICY_URL</code>. Consider adding a <code>Constants.WEBSITE_URL</code> and referencing it here.</p>"
+                  },
+                  "suggestion": {
+                    "diffEntries": [
+                      {
+                        "path": "app/src/main/java/app/altsea/AboutActivity.kt",
+                        "diffLines": [
+                          { "type": "HUNK", "right": 210 },
+                          { "type": "CONTEXT", "right": 211 },
+                          { "type": "CONTEXT", "right": 212 },
+                          { "type": "ADDITION", "right": 213 },
+                          { "type": "ADDITION", "right": 214 },
+                          { "type": "CONTEXT", "right": 215 },
+                          { "type": "CONTEXT", "right": 216 }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          </script>
+        </react-partial>
+      </div>
+    </div>
+
+    <div class="js-inline-comments-container">
+      <table>
+        <tbody>
+          <tr><td data-line-number="221"></td></tr>
+          <tr><td data-line-number="222"></td></tr>
+          <tr><td data-line-number="223"></td></tr>
+        </tbody>
+      </table>
+      <div id="discussion_r2938946686">
+        <react-partial partial-name="automated-review-comment">
+          <script type="application/json" data-target="react-partial.embeddedData">
+            {
+              "props": {
+                "comment": {
+                  "automatedComment": {
+                    "message": "<p>This Discord link is hardcoded inline too. Consider reusing <code>ALTSEA_DISCORD_URL</code> instead of embedding the literal URL in the click handler.</p>"
+                  },
+                  "suggestion": {
+                    "diffEntries": [
+                      {
+                        "path": "app/src/main/java/app/altsea/AboutActivity.kt",
+                        "diffLines": [
+                          { "type": "HUNK", "right": 221 },
+                          { "type": "CONTEXT", "right": 222 },
+                          { "type": "CONTEXT", "right": 223 },
+                          { "type": "ADDITION", "right": 224 },
+                          { "type": "ADDITION", "right": 225 },
+                          { "type": "CONTEXT", "right": 226 },
+                          { "type": "CONTEXT", "right": 227 }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          </script>
+        </react-partial>
+      </div>
+    </div>
+  </body>
+</html>

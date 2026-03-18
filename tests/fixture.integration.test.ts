@@ -1,11 +1,15 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { extractFeedbackFromDocument } from '../src/core/parser';
 import { formatFeedback } from '../src/core/formatter';
 
 function loadFixture(name: string): string {
-  return readFileSync(resolve(process.cwd(), 'tests/fixtures', name), 'utf8');
+  const testFixturePath = resolve(process.cwd(), 'tests/fixtures', name);
+  const sharedFixturePath = resolve(process.cwd(), 'fixtures', name);
+  const fixturePath = existsSync(testFixturePath) ? testFixturePath : sharedFixturePath;
+
+  return readFileSync(fixturePath, 'utf8');
 }
 
 describe('fixture integration', () => {
@@ -82,5 +86,49 @@ describe('fixture integration', () => {
     expect(output).toContain('From lines 195 to 199:');
     expect(output).toContain('`allowed_mentions`');
     expect(output).toContain('strict per-field size limits');
+  });
+
+  it('extracts automated review feedback from the better contacts example shape', () => {
+    const html = loadFixture('better-contacts-automated-review.html');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    const result = extractFeedbackFromDocument(doc);
+    const output = formatFeedback(result.entries);
+
+    expect(result.entries).toEqual([
+      {
+        filePath: 'app/src/main/java/app/altsea/AboutActivity.kt',
+        comments: [
+          expect.objectContaining({
+            startLine: 211,
+            endLine: 216,
+            body: expect.stringContaining('`Constants.WEBSITE_URL`')
+          }),
+          expect.objectContaining({
+            startLine: 222,
+            endLine: 227,
+            body: expect.stringContaining('`ALTSEA_DISCORD_URL`')
+          })
+        ]
+      }
+    ]);
+    expect(output).toContain('On `app/src/main/java/app/altsea/AboutActivity.kt`:');
+    expect(output).toContain('From lines 211 to 216:');
+    expect(output).toContain('From lines 222 to 227:');
+  });
+
+  it('extracts automated review feedback from the Several March fixes export', () => {
+    const html = loadFixture('Several March fixes (16 & 17) by pedronveloso · Pull Request #46 · pedronveloso_altsea.html');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    const result = extractFeedbackFromDocument(doc);
+    const output = formatFeedback(result.entries);
+
+    expect(result.warnings).toEqual([]);
+    expect(result.entries.length).toBe(2);
+    expect(output).toContain('On `app/src/main/java/app/altsea/ui/onboarding/OnboardingComponents.kt`:');
+    expect(output).toContain('On `app/src/main/java/app/altsea/ui/components/PreviewCard.kt`:');
+    expect(output).toContain('Modifier.weight(1f)');
+    expect(output).toContain('androidx.compose.foundation.Image');
   });
 });

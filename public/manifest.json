@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "PR Feedback Extractor",
   "description": "Extract grouped GitHub PR feedback into copy-ready text.",
-  "version": "0.1.1",
-  "permissions": ["activeTab"],
+  "version": "0.1.6",
+  "permissions": ["activeTab", "scripting"],
   "host_permissions": ["https://github.com/*/*/pull/*"],
   "background": {
     "service_worker": "service-worker.js",

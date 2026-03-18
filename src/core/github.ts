@@ -1,7 +1,7 @@
 import type { FeedbackComment, FileFeedbackEntry, LineRange } from './types';
 import { commentBodyToMarkdown } from './markdown';
 
-const THREAD_SELECTORS = ['details.review-thread-component'];
+const THREAD_SELECTORS = ['details.review-thread-component', '[id^="discussion_r"]'];
 const FILE_PATH_SELECTORS = ['summary a.text-mono', 'summary [data-path]', '[data-path]', 'summary a[title]'];
 const COMMENT_BODY_SELECTORS = [
   '.js-inline-comments-container .js-comment.review-comment .js-comment-body',
@@ -66,13 +66,49 @@ function parseLineNumberAttribute(thread: Element, attributeName: string): numbe
 }
 
 function parseAutomatedCommentBody(thread: Element, script: Element): string | null {
+  const data = parseAutomatedCommentData(script);
+  if (!data) {
+    return null;
+  }
+
+  const bodyHtml = data.props?.comment?.bodyHTML ?? data.props?.comment?.automatedComment?.message ?? null;
+  if (bodyHtml) {
+    const container = thread.ownerDocument.createElement('div');
+    container.innerHTML = bodyHtml;
+    return commentBodyToMarkdown(container).trim();
+  }
+
+  return data.props?.comment?.body?.trim() ?? null;
+}
+
+function parseAutomatedCommentData(script: Element): {
+  props?: {
+    comment?: {
+      bodyHTML?: string;
+      body?: string;
+      automatedComment?: {
+        message?: string;
+      };
+      suggestion?: {
+        diffEntries?: Array<{
+          path?: string;
+          diffLines?: Array<{
+            left?: number | null;
+            right?: number | null;
+            type?: string;
+          }>;
+        }>;
+      };
+    };
+  };
+} | null {
   const raw = script.textContent?.trim();
   if (!raw) {
     return null;
   }
 
   try {
-    const data = JSON.parse(raw) as {
+    return JSON.parse(raw) as {
       props?: {
         comment?: {
           bodyHTML?: string;
@@ -80,25 +116,66 @@ function parseAutomatedCommentBody(thread: Element, script: Element): string | n
           automatedComment?: {
             message?: string;
           };
+          suggestion?: {
+            diffEntries?: Array<{
+              path?: string;
+              diffLines?: Array<{
+                left?: number | null;
+                right?: number | null;
+                type?: string;
+              }>;
+            }>;
+          };
         };
       };
     };
-
-    const bodyHtml = data.props?.comment?.bodyHTML ?? data.props?.comment?.automatedComment?.message ?? null;
-    if (bodyHtml) {
-      const container = thread.ownerDocument.createElement('div');
-      container.innerHTML = bodyHtml;
-      return commentBodyToMarkdown(container).trim();
-    }
-
-    return data.props?.comment?.body?.trim() ?? null;
   } catch {
     return null;
   }
 }
 
+function extractAutomatedMetadata(thread: Element): { filePath: string | null; lineRange: LineRange | null } {
+  const scripts = queryAll(thread, AUTOMATED_COMMENT_SELECTORS);
+
+  for (const script of scripts) {
+    const data = parseAutomatedCommentData(script);
+    const diffEntry = data?.props?.comment?.suggestion?.diffEntries?.[0];
+    const filePath = diffEntry?.path?.trim() || null;
+    const rightLines =
+      diffEntry?.diffLines
+        ?.filter((line) => line.type !== 'HUNK')
+        .map((line) => line.right)
+        .filter((line): line is number => typeof line === 'number' && Number.isFinite(line)) ?? [];
+
+    if (!filePath && rightLines.length === 0) {
+      continue;
+    }
+
+    return {
+      filePath,
+      lineRange:
+        rightLines.length > 0
+          ? {
+              startLine: rightLines[0],
+              endLine: rightLines[rightLines.length - 1]
+            }
+          : null
+    };
+  }
+
+  return { filePath: null, lineRange: null };
+}
+
 export function findReviewThreads(doc: Document): Element[] {
-  return queryAll(doc, THREAD_SELECTORS);
+  return queryAll(doc, THREAD_SELECTORS).filter((thread) => !isResolvedThread(thread) && !isNestedDiscussionWrapper(thread));
+}
+
+function isResolvedThread(thread: Element): boolean {
+  return thread.matches('details.review-thread-component[data-resolved="true"]');
+}
+
+function isNestedDiscussionWrapper(thread: Element): boolean {
+  return thread.id.startsWith('discussion_r') && Boolean(thread.closest('details.review-thread-component'));
 }
 
 export function extractFilePath(thread: Element): string | null {
@@ -115,7 +192,11 @@ export function extractFilePath(thread: Element): string | null {
   }
 
   const fromText = fileElement?.textContent?.trim() ?? '';
-  return fromText || null;
+  if (fromText) {
+    return fromText;
+  }
+
+  return extractAutomatedMetadata(thread).filePath;
 }
 
 export function extractLineRange(thread: Element): LineRange {
@@ -138,7 +219,7 @@ export function extractLineRange(thread: Element): LineRange {
     .filter((line): line is number => line !== null);
 
   if (visibleLineNumbers.length === 0) {
-    return { startLine: null, endLine: null };
+    return extractAutomatedMetadata(thread).lineRange ?? { startLine: null, endLine: null };
   }
 
   return {
