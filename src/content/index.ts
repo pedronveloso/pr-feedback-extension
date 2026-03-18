@@ -2,6 +2,8 @@ import { findReviewThreads } from '../core/github';
 import { extractFeedbackFromDocument } from '../core/parser';
 import { formatFeedback } from '../core/formatter';
 
+// Keep these protocol checks local to preserve a single-file content-script bundle.
+// Chrome injects `content.js` directly, and chunked runtime imports break reinjection.
 const EXTRACT_FEEDBACK_MESSAGE_TYPE = 'EXTRACT_FEEDBACK';
 const CONTENT_SCRIPT_READY_MESSAGE_TYPE = 'CONTENT_SCRIPT_READY';
 

@@ -209,8 +209,24 @@ export function mountPopup({
     };
   };
 
-  const requestExtraction = async (tabId: number): Promise<ExtractFeedbackResponse> => {
-    return tabsApi.sendMessage(tabId, { type: EXTRACT_FEEDBACK_MESSAGE_TYPE } satisfies ExtractFeedbackRequest) as Promise<ExtractFeedbackResponse>;
+  const requestExtraction = async (tabId: number): Promise<ContentScriptResponse> => {
+    return tabsApi.sendMessage(tabId, { type: EXTRACT_FEEDBACK_MESSAGE_TYPE } satisfies ExtractFeedbackRequest);
+  };
+
+  const toExtractionAttempt = (response: ContentScriptResponse): ExtractionAttempt => {
+    if (!isExtractFeedbackResponse(response)) {
+      return {
+        kind: 'error',
+        descriptor: {
+          code: 'PRFE-POPUP-006',
+          heading: 'Received an invalid response from the content script.',
+          details: ['The extension could not read diagnostics for this page.'],
+          status: 'Received an invalid response from the content script.'
+        }
+      };
+    }
+
+    return { kind: 'response', response };
   };
 
   const requestContentScriptReady = async (tabId: number): Promise<void> => {
@@ -309,7 +325,7 @@ export function mountPopup({
 
     try {
       await waitForContentScriptReady(activeTab.id!);
-      return { kind: 'response', response: await requestExtraction(activeTab.id!) };
+      return toExtractionAttempt(await requestExtraction(activeTab.id!));
     } catch (retryError) {
       return {
         kind: 'error',
@@ -329,7 +345,7 @@ export function mountPopup({
 
   const requestExtractionWithRecovery = async (activeTab: ActiveTabInfo): Promise<ExtractionAttempt> => {
     try {
-      return { kind: 'response', response: await requestExtraction(activeTab.id!) };
+      return toExtractionAttempt(await requestExtraction(activeTab.id!));
     } catch (initialError) {
       return recoverExtractionResponse(activeTab, initialError);
     }

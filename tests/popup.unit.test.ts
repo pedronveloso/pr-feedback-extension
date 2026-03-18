@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import { mountPopup } from '../src/popup/app';
-import { CONTENT_SCRIPT_READY_MESSAGE_TYPE, EXTRACT_FEEDBACK_MESSAGE_TYPE, type ExtractFeedbackResponse } from '../src/shared/messages';
+import {
+  CONTENT_SCRIPT_READY_MESSAGE_TYPE,
+  EXTRACT_FEEDBACK_MESSAGE_TYPE,
+  type ContentScriptResponse,
+  type ExtractFeedbackResponse
+} from '../src/shared/messages';
 
 function createPopupDocument(): Document {
   return new DOMParser().parseFromString(
@@ -22,6 +27,13 @@ function createPopupDocument(): Document {
 }
 
 function createTabsApi(response: ExtractFeedbackResponse, tabId = 1) {
+  return {
+    query: vi.fn(async () => (tabId ? [{ id: tabId, url: 'https://github.com/example/repo/pull/1' }] : [])),
+    sendMessage: vi.fn(async () => response)
+  };
+}
+
+function createContentScriptTabsApi(response: ContentScriptResponse, tabId = 1) {
   return {
     query: vi.fn(async () => (tabId ? [{ id: tabId, url: 'https://github.com/example/repo/pull/1' }] : [])),
     sendMessage: vi.fn(async () => response)
@@ -62,10 +74,26 @@ describe('mountPopup', () => {
 
   it('shows an invalid-response status for malformed content-script replies', async () => {
     const doc = createPopupDocument();
-    const tabsApi = {
-      query: vi.fn(async () => [{ id: 1, url: 'https://github.com/example/repo/pull/1' }]),
-      sendMessage: vi.fn(async () => ({ ok: true, warnings: [] } as unknown as ExtractFeedbackResponse))
-    };
+    const tabsApi = createContentScriptTabsApi({ ok: true, warnings: [] } as unknown as ContentScriptResponse);
+
+    const controller = mountPopup({
+      document: doc,
+      tabsApi,
+      scriptingApi: { executeScript: vi.fn(async () => undefined) },
+      clipboardApi: { writeText: vi.fn(async () => undefined) },
+      autoExtract: false
+    });
+
+    await controller.extractFeedback();
+
+    expect(doc.querySelector('#status')?.textContent).toBe('Received an invalid response from the content script.');
+    expect(doc.querySelector<HTMLTextAreaElement>('#output')?.value).toContain('Code: PRFE-POPUP-006');
+    expect(doc.querySelector<HTMLTextAreaElement>('#output')?.value).toContain('could not read diagnostics');
+  });
+
+  it('shows an invalid-response status when extraction receives a readiness reply', async () => {
+    const doc = createPopupDocument();
+    const tabsApi = createContentScriptTabsApi({ ready: true });
 
     const controller = mountPopup({
       document: doc,

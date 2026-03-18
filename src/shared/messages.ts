@@ -43,6 +43,23 @@ export interface ContentScriptReadyResponse {
 export type ContentScriptRequest = ExtractFeedbackRequest | ContentScriptReadyRequest;
 export type ContentScriptResponse = ExtractFeedbackResponse | ContentScriptReadyResponse;
 
+function isExtractFeedbackDiagnostics(message: unknown): message is ExtractFeedbackDiagnostics {
+  if (!message || typeof message !== 'object') {
+    return false;
+  }
+
+  const diagnostics = message as Partial<ExtractFeedbackDiagnostics>;
+  return (
+    typeof diagnostics.threadCount === 'number' &&
+    typeof diagnostics.entryCount === 'number' &&
+    typeof diagnostics.warningCount === 'number' &&
+    typeof diagnostics.outputLength === 'number' &&
+    Array.isArray(diagnostics.warnings) &&
+    (diagnostics.code === undefined || typeof diagnostics.code === 'string') &&
+    (diagnostics.reason === undefined || typeof diagnostics.reason === 'string')
+  );
+}
+
 export function isExtractFeedbackRequest(message: unknown): message is ExtractFeedbackRequest {
   return Boolean(
     message &&
@@ -68,19 +85,7 @@ export function isExtractFeedbackResponse(message: unknown): message is ExtractF
 
   const candidate = message as Partial<ExtractFeedbackResponse>;
   if (candidate.ok === true) {
-    const diagnostics = candidate.diagnostics as Partial<ExtractFeedbackDiagnostics> | undefined;
-    return (
-      typeof candidate.output === 'string' &&
-      Array.isArray(candidate.warnings) &&
-      Boolean(
-        diagnostics &&
-          typeof diagnostics.threadCount === 'number' &&
-          typeof diagnostics.entryCount === 'number' &&
-          typeof diagnostics.warningCount === 'number' &&
-          typeof diagnostics.outputLength === 'number' &&
-          Array.isArray(diagnostics.warnings)
-      )
-    );
+    return typeof candidate.output === 'string' && Array.isArray(candidate.warnings) && isExtractFeedbackDiagnostics(candidate.diagnostics);
   }
 
   if (candidate.ok !== false || (candidate.error !== 'UNSUPPORTED_PAGE' && candidate.error !== 'EXTRACTION_FAILED')) {
@@ -91,16 +96,7 @@ export function isExtractFeedbackResponse(message: unknown): message is ExtractF
     return true;
   }
 
-  const diagnostics = candidate.diagnostics as Partial<ExtractFeedbackDiagnostics>;
-  return (
-    typeof diagnostics.threadCount === 'number' &&
-    typeof diagnostics.entryCount === 'number' &&
-    typeof diagnostics.warningCount === 'number' &&
-    typeof diagnostics.outputLength === 'number' &&
-    Array.isArray(diagnostics.warnings) &&
-    (diagnostics.code === undefined || typeof diagnostics.code === 'string') &&
-    (diagnostics.reason === undefined || typeof diagnostics.reason === 'string')
-  );
+  return isExtractFeedbackDiagnostics(candidate.diagnostics);
 }
 
 export function isContentScriptReadyResponse(message: unknown): message is ContentScriptReadyResponse {

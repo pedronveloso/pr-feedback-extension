@@ -1,10 +1,10 @@
 {
   "name": "pr-feedback-extension",
-  "version": "0.1.6",
+  "version": "0.1.8",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && node scripts/verify-build.mjs",
     "dev": "vite build --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
