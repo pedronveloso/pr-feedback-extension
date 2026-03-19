@@ -16,8 +16,17 @@ function createPopupDocument(): Document {
           <main>
             <button id="extract-button" type="button">Extract</button>
             <button id="copy-button" type="button">Copy</button>
+            <button id="output-tab" type="button" aria-selected="true">Output</button>
+            <button id="logs-tab" type="button" aria-selected="false" hidden>Logs</button>
+            <div id="logs-actions" hidden>
+              <button id="copy-logs-button" type="button">Copy logs</button>
+              <button id="clear-logs-button" type="button">Clear logs</button>
+            </div>
             <p id="status"></p>
             <textarea id="output"></textarea>
+            <section id="logs-panel" hidden>
+              <textarea id="logs-output"></textarea>
+            </section>
           </main>
         </body>
       </html>
@@ -70,6 +79,85 @@ describe('mountPopup', () => {
     expect(tabsApi.sendMessage).toHaveBeenCalledWith(1, { type: EXTRACT_FEEDBACK_MESSAGE_TYPE });
     expect(doc.querySelector<HTMLTextAreaElement>('#output')?.value).toBe('Formatted output');
     expect(doc.querySelector('#status')?.textContent).toBe('Extracted with 1 warning(s).');
+  });
+
+  it('shows the logs tab for development installs and loads logs', async () => {
+    const doc = createPopupDocument();
+    const tabsApi = createTabsApi({
+      ok: true,
+      output: 'Formatted output',
+      warnings: [],
+      diagnostics: {
+        threadCount: 1,
+        entryCount: 1,
+        warningCount: 0,
+        outputLength: 16,
+        warnings: []
+      }
+    });
+    const runtimeApi = {
+      sendMessage: vi
+        .fn()
+        .mockResolvedValueOnce({
+          logs: [
+            {
+              timestamp: '2026-03-19T08:00:00.000Z',
+              source: 'content',
+              level: 'info',
+              event: 'claude-review:not-found',
+              detail: 'none'
+            }
+          ]
+        })
+        .mockResolvedValueOnce({ ok: true })
+    };
+    const managementApi = { getSelf: vi.fn(async () => ({ installType: 'development' })) };
+
+    mountPopup({
+      document: doc,
+      tabsApi,
+      runtimeApi,
+      managementApi,
+      scriptingApi: { executeScript: vi.fn(async () => undefined) },
+      clipboardApi: { writeText: vi.fn(async () => undefined) },
+      autoExtract: false
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(doc.querySelector('#logs-tab')?.hasAttribute('hidden')).toBe(false);
+    expect(doc.querySelector<HTMLTextAreaElement>('#logs-output')?.value).toContain('claude-review:not-found');
+  });
+
+  it('keeps the logs tab hidden outside development installs', async () => {
+    const doc = createPopupDocument();
+    const tabsApi = createTabsApi({
+      ok: true,
+      output: 'Formatted output',
+      warnings: [],
+      diagnostics: {
+        threadCount: 1,
+        entryCount: 1,
+        warningCount: 0,
+        outputLength: 16,
+        warnings: []
+      }
+    });
+    const managementApi = { getSelf: vi.fn(async () => ({ installType: 'normal' })) };
+
+    mountPopup({
+      document: doc,
+      tabsApi,
+      managementApi,
+      scriptingApi: { executeScript: vi.fn(async () => undefined) },
+      clipboardApi: { writeText: vi.fn(async () => undefined) },
+      autoExtract: false
+    });
+
+    await Promise.resolve();
+
+    expect(doc.querySelector('#logs-tab')?.hasAttribute('hidden')).toBe(true);
   });
 
   it('shows an invalid-response status for malformed content-script replies', async () => {

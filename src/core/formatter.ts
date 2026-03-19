@@ -1,3 +1,4 @@
+import { debugLog } from './debug';
 import type { FileFeedbackEntry } from './types';
 
 function formatLineRange(startLine: number | null, endLine: number | null): string | null {
@@ -17,7 +18,7 @@ function formatLineRange(startLine: number | null, endLine: number | null): stri
   return line === null ? null : `From line ${line}:`;
 }
 
-export function formatFeedback(entries: FileFeedbackEntry[]): string {
+function formatInlineFeedback(entries: FileFeedbackEntry[]): string {
   if (entries.length === 0) {
     return 'No review feedback comments found on this PR page.';
   }
@@ -35,4 +36,31 @@ export function formatFeedback(entries: FileFeedbackEntry[]): string {
       return [`On \`${entry.filePath}\`:`, '', blocks].join('\n');
     })
     .join('\n\n');
+}
+
+export function formatFeedback(entries: FileFeedbackEntry[], claudeReview: string | null = null): string {
+  const inlineFeedback = formatInlineFeedback(entries);
+  debugLog({
+    source: 'content',
+    event: 'formatter:branch',
+    detail: JSON.stringify({ inlineEntryCount: entries.length, hasClaudeReview: Boolean(claudeReview) })
+  });
+
+  if (!claudeReview) {
+    return inlineFeedback;
+  }
+
+  if (entries.length === 0) {
+    return ['PR feedback from second reviewer:', '', claudeReview.trim()].join('\n');
+  }
+
+  return [
+    'PR feedback from first reviewer:',
+    '',
+    inlineFeedback,
+    '',
+    'PR feedback from second reviewer:',
+    '',
+    claudeReview.trim()
+  ].join('\n');
 }

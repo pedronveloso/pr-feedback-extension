@@ -1,4 +1,5 @@
-import { extractThreadData, findReviewThreads } from './github';
+import { extractClaudeReview, extractThreadData, findReviewThreads } from './github';
+import { debugLog } from './debug';
 import { commentBodyToMarkdown } from './markdown';
 import type { FeedbackExtractionResult, FileFeedbackEntry } from './types';
 
@@ -8,9 +9,15 @@ export function extractFeedbackFromDocument(doc: Document): FeedbackExtractionRe
   const warnings: string[] = [];
   const grouped = new Map<string, FileFeedbackEntry>();
   const orderedFilePaths: string[] = [];
+  const claudeReview = extractClaudeReview(doc);
 
   const threads = findReviewThreads(doc);
-  if (threads.length === 0) {
+  debugLog({
+    source: 'content',
+    event: 'extraction:thread-summary',
+    detail: JSON.stringify({ threadCount: threads.length, hasClaudeReview: Boolean(claudeReview) })
+  });
+  if (threads.length === 0 && !claudeReview) {
     warnings.push('No review threads found. GitHub DOM may have changed or the PR has no inline feedback.');
   }
 
@@ -39,6 +46,7 @@ export function extractFeedbackFromDocument(doc: Document): FeedbackExtractionRe
 
   return {
     entries: orderedFilePaths.map((filePath) => grouped.get(filePath)!).filter((entry) => entry.comments.length > 0),
+    claudeReview,
     warnings
   };
 }

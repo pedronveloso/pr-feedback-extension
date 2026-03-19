@@ -2,6 +2,17 @@ import type { FeedbackExtractionResult } from '../core/types';
 
 export const EXTRACT_FEEDBACK_MESSAGE_TYPE = 'EXTRACT_FEEDBACK';
 export const CONTENT_SCRIPT_READY_MESSAGE_TYPE = 'CONTENT_SCRIPT_READY';
+export const DEBUG_LOG_MESSAGE_TYPE = 'DEBUG_LOG';
+export const GET_DEBUG_LOGS_MESSAGE_TYPE = 'GET_DEBUG_LOGS';
+export const CLEAR_DEBUG_LOGS_MESSAGE_TYPE = 'CLEAR_DEBUG_LOGS';
+
+export interface DebugLogEntry {
+  timestamp: string;
+  source: 'content' | 'popup' | 'background';
+  level: 'info' | 'warn' | 'error';
+  event: string;
+  detail?: string;
+}
 
 export interface ExtractFeedbackDiagnostics {
   threadCount: number;
@@ -19,6 +30,19 @@ export interface ExtractFeedbackRequest {
 
 export interface ContentScriptReadyRequest {
   type: typeof CONTENT_SCRIPT_READY_MESSAGE_TYPE;
+}
+
+export interface DebugLogRequest {
+  type: typeof DEBUG_LOG_MESSAGE_TYPE;
+  entry: DebugLogEntry;
+}
+
+export interface GetDebugLogsRequest {
+  type: typeof GET_DEBUG_LOGS_MESSAGE_TYPE;
+}
+
+export interface ClearDebugLogsRequest {
+  type: typeof CLEAR_DEBUG_LOGS_MESSAGE_TYPE;
 }
 
 export interface ExtractFeedbackSuccessResponse {
@@ -40,8 +64,33 @@ export interface ContentScriptReadyResponse {
   ready: true;
 }
 
+export interface GetDebugLogsResponse {
+  logs: DebugLogEntry[];
+}
+
+export interface ClearDebugLogsResponse {
+  ok: true;
+}
+
 export type ContentScriptRequest = ExtractFeedbackRequest | ContentScriptReadyRequest;
 export type ContentScriptResponse = ExtractFeedbackResponse | ContentScriptReadyResponse;
+export type DebugRuntimeRequest = DebugLogRequest | GetDebugLogsRequest | ClearDebugLogsRequest;
+export type DebugRuntimeResponse = GetDebugLogsResponse | ClearDebugLogsResponse;
+
+function isDebugLogEntry(message: unknown): message is DebugLogEntry {
+  if (!message || typeof message !== 'object') {
+    return false;
+  }
+
+  const entry = message as Partial<DebugLogEntry>;
+  return (
+    typeof entry.timestamp === 'string' &&
+    (entry.source === 'content' || entry.source === 'popup' || entry.source === 'background') &&
+    (entry.level === 'info' || entry.level === 'warn' || entry.level === 'error') &&
+    typeof entry.event === 'string' &&
+    (entry.detail === undefined || typeof entry.detail === 'string')
+  );
+}
 
 function isExtractFeedbackDiagnostics(message: unknown): message is ExtractFeedbackDiagnostics {
   if (!message || typeof message !== 'object') {
@@ -75,6 +124,35 @@ export function isContentScriptReadyRequest(message: unknown): message is Conten
       typeof message === 'object' &&
       'type' in message &&
       (message as { type?: unknown }).type === CONTENT_SCRIPT_READY_MESSAGE_TYPE
+  );
+}
+
+export function isDebugLogRequest(message: unknown): message is DebugLogRequest {
+  return Boolean(
+    message &&
+      typeof message === 'object' &&
+      'type' in message &&
+      (message as { type?: unknown }).type === DEBUG_LOG_MESSAGE_TYPE &&
+      'entry' in message &&
+      isDebugLogEntry((message as { entry?: unknown }).entry)
+  );
+}
+
+export function isGetDebugLogsRequest(message: unknown): message is GetDebugLogsRequest {
+  return Boolean(
+    message &&
+      typeof message === 'object' &&
+      'type' in message &&
+      (message as { type?: unknown }).type === GET_DEBUG_LOGS_MESSAGE_TYPE
+  );
+}
+
+export function isClearDebugLogsRequest(message: unknown): message is ClearDebugLogsRequest {
+  return Boolean(
+    message &&
+      typeof message === 'object' &&
+      'type' in message &&
+      (message as { type?: unknown }).type === CLEAR_DEBUG_LOGS_MESSAGE_TYPE
   );
 }
 

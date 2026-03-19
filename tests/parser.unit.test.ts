@@ -37,6 +37,25 @@ describe('commentBodyToMarkdown', () => {
     const markdown = commentBodyToMarkdown(body!);
     expect(markdown).toBe('Hello `world`.\n\nSecond para.');
   });
+
+  it('preserves headings, dividers, fenced code blocks, and code mentions', () => {
+    const doc = createDocument(`
+      <div class="js-comment-body">
+        <h2>Code Review</h2>
+        <hr>
+        <h3>Bug Risk: <code>thing()</code></h3>
+        <p>Use <code>otherThing()</code>.</p>
+        <div><pre><code>const value = thing();</code></pre></div>
+      </div>
+    `);
+    const body = doc.querySelector('.js-comment-body');
+    expect(body).not.toBeNull();
+
+    const markdown = commentBodyToMarkdown(body!);
+    expect(markdown).toBe(
+      '## Code Review\n\n- - -\n\n### Bug Risk: `thing()`\n\nUse `otherThing()`.\n\n```\nconst value = thing();\n```'
+    );
+  });
 });
 
 describe('extractFeedbackFromDocument', () => {
@@ -201,6 +220,7 @@ describe('extractFeedbackFromDocument', () => {
     const result = extractFeedbackFromDocument(doc);
 
     expect(result.entries).toEqual([]);
+    expect(result.claudeReview).toBeNull();
     expect(result.warnings).toContain('No review threads found. GitHub DOM may have changed or the PR has no inline feedback.');
   });
 
@@ -218,7 +238,64 @@ describe('extractFeedbackFromDocument', () => {
     const result = extractFeedbackFromDocument(doc);
 
     expect(result.entries).toEqual([]);
+    expect(result.claudeReview).toBeNull();
     expect(result.warnings).toContain('No review threads found. GitHub DOM may have changed or the PR has no inline feedback.');
+  });
+
+  it('extracts and cleans a Claude bot review comment', () => {
+    const doc = createDocument(`
+      <div class="timeline-comment">
+        <div class="timeline-comment-header">
+          <strong>
+            <a class="author" href="https://github.com/apps/claude">claude</a>
+            <span class="Label">bot</span>
+          </strong>
+        </div>
+        <div class="js-comment-body">
+          <h2>Code Review</h2>
+          <p>Overall this is a solid PR with good test coverage and meaningful improvements. A few things to address:</p>
+          <hr>
+          <h3>Bug Risk: <code>thing()</code></h3>
+          <p>Use <code>otherThing()</code>.</p>
+          <div><pre><code>const value = thing();</code></pre></div>
+          <hr>
+          <h3>Positives</h3>
+          <ul><li><code>thing()</code> is nice.</li></ul>
+        </div>
+      </div>
+    `);
+
+    const result = extractFeedbackFromDocument(doc);
+
+    expect(result.entries).toEqual([]);
+    expect(result.warnings).toEqual([]);
+    expect(result.claudeReview).toBe(
+      '## Code Review\n\n- - -\n\n### Bug Risk: `thing()`\n\nUse `otherThing()`.\n\n```\nconst value = thing();\n```'
+    );
+  });
+
+  it('accepts Claude app links rendered as relative GitHub paths', () => {
+    const doc = createDocument(`
+      <div class="timeline-comment">
+        <div class="timeline-comment-header">
+          <strong>
+            <a class="author" href="/apps/claude">claude</a>
+            <span class="Label">bot</span>
+          </strong>
+        </div>
+        <div class="js-comment-body">
+          <h2>Code Review</h2>
+          <p>Overall this is a solid PR with good test coverage and meaningful improvements. A few things to address:</p>
+          <hr>
+          <h3>Minor</h3>
+          <p>Check <code>value</code>.</p>
+        </div>
+      </div>
+    `);
+
+    const result = extractFeedbackFromDocument(doc);
+
+    expect(result.claudeReview).toBe('## Code Review\n\n- - -\n\n### Minor\n\nCheck `value`.');
   });
 });
 
