@@ -145,8 +145,75 @@ describe('extractFeedbackFromDocument', () => {
     expect(warnings).toEqual([]);
   });
 
+  it('falls back to automated review JSON metadata when file path and line range are not exposed in the thread header', () => {
+    const doc = createDocument(`
+      <div id="discussion_r123">
+        <react-partial partial-name="automated-review-comment">
+          <script type="application/json" data-target="react-partial.embeddedData">
+            {
+              "props": {
+                "comment": {
+                  "automatedComment": {
+                    "message": "<p>Reuse <code>Constants.WEBSITE_URL</code> here.</p>"
+                  },
+                  "suggestion": {
+                    "diffEntries": [
+                      {
+                        "path": "app/src/main/java/app/altsea/AboutActivity.kt",
+                        "diffLines": [
+                          { "type": "HUNK", "right": 210 },
+                          { "type": "CONTEXT", "right": 211 },
+                          { "type": "CONTEXT", "right": 212 },
+                          { "type": "ADDITION", "right": 213 },
+                          { "type": "ADDITION", "right": 214 }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          </script>
+        </react-partial>
+      </div>
+    `);
+
+    const { entries, warnings } = extractFeedbackFromDocument(doc);
+
+    expect(entries).toEqual([
+      {
+        filePath: 'app/src/main/java/app/altsea/AboutActivity.kt',
+        comments: [
+          {
+            startLine: 211,
+            endLine: 214,
+            body: 'Reuse `Constants.WEBSITE_URL` here.'
+          }
+        ]
+      }
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
   it('warns when no review threads are present', () => {
     const doc = createDocument('<main><p>No inline comments.</p></main>');
+
+    const result = extractFeedbackFromDocument(doc);
+
+    expect(result.entries).toEqual([]);
+    expect(result.warnings).toContain('No review threads found. GitHub DOM may have changed or the PR has no inline feedback.');
+  });
+
+  it('does not surface resolved review threads', () => {
+    const doc = createDocument(`
+      <details class="review-thread-component" data-resolved="true">
+        <summary><a class="text-mono">src/resolved.ts</a></summary>
+        <div><span class="js-multi-line-preview-start">+10</span> to <span class="js-multi-line-preview-end">+12</span></div>
+        <div class="js-inline-comments-container">
+          <div class="js-comment review-comment"><div class="js-comment-body"><p>This should stay hidden.</p></div></div>
+        </div>
+      </details>
+    `);
 
     const result = extractFeedbackFromDocument(doc);
 

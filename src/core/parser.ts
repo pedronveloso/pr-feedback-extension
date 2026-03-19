@@ -1,4 +1,4 @@
-import { extractCommentBlocks, extractFilePath, extractLineRange, findReviewThreads } from './github';
+import { extractThreadData, findReviewThreads } from './github';
 import { commentBodyToMarkdown } from './markdown';
 import type { FeedbackExtractionResult, FileFeedbackEntry } from './types';
 
@@ -15,28 +15,26 @@ export function extractFeedbackFromDocument(doc: Document): FeedbackExtractionRe
   }
 
   threads.forEach((thread, index) => {
-    const filePath = extractFilePath(thread);
-    if (!filePath) {
+    const extraction = extractThreadData(thread);
+    if (!extraction.filePath) {
       warnings.push(`Skipped thread ${index + 1} without file path.`);
       return;
     }
 
-    const lineRange = extractLineRange(thread);
-    const comments = extractCommentBlocks(thread, lineRange);
-    if (comments.length === 0) {
+    if (extraction.comments.length === 0) {
       return;
     }
 
-    if (!grouped.has(filePath)) {
-      grouped.set(filePath, { filePath, comments: [] });
-      orderedFilePaths.push(filePath);
+    if (!grouped.has(extraction.filePath)) {
+      grouped.set(extraction.filePath, { filePath: extraction.filePath, comments: [] });
+      orderedFilePaths.push(extraction.filePath);
     }
 
-    if (lineRange.startLine === null && lineRange.endLine === null) {
-      warnings.push(`Extracted comments for ${filePath} without a line range.`);
+    if (extraction.lineRange.startLine === null && extraction.lineRange.endLine === null) {
+      warnings.push(`Extracted comments for ${extraction.filePath} without a line range.`);
     }
 
-    grouped.get(filePath)!.comments.push(...comments);
+    grouped.get(extraction.filePath)!.comments.push(...extraction.comments);
   });
 
   return {

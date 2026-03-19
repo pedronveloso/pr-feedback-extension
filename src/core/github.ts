@@ -1,7 +1,7 @@
 import type { FeedbackComment, FileFeedbackEntry, LineRange } from './types';
 import { commentBodyToMarkdown } from './markdown';
 
-const THREAD_SELECTORS = ['details.review-thread-component'];
+const THREAD_SELECTORS = ['details.review-thread-component', '[id^="discussion_r"]'];
 const FILE_PATH_SELECTORS = ['summary a.text-mono', 'summary [data-path]', '[data-path]', 'summary a[title]'];
 const COMMENT_BODY_SELECTORS = [
   '.js-inline-comments-container .js-comment.review-comment .js-comment-body',
@@ -11,6 +11,39 @@ const AUTOMATED_COMMENT_SELECTORS = [
   'react-partial[partial-name="automated-review-comment"] script[data-target="react-partial.embeddedData"]',
   'script[data-target="react-partial.embeddedData"]'
 ];
+
+interface AutomatedCommentData {
+  props?: {
+    comment?: {
+      bodyHTML?: string;
+      body?: string;
+      automatedComment?: {
+        message?: string;
+      };
+      suggestion?: {
+        diffEntries?: Array<{
+          path?: string;
+          diffLines?: Array<{
+            left?: number | null;
+            right?: number | null;
+            type?: string;
+          }>;
+        }>;
+      };
+    };
+  };
+}
+
+interface AutomatedMetadata {
+  filePath: string | null;
+  lineRange: LineRange | null;
+}
+
+export interface ThreadExtraction {
+  filePath: string | null;
+  lineRange: LineRange;
+  comments: FeedbackComment[];
+}
 
 function queryFirst(root: ParentNode, selectors: string[]): Element | null {
   for (const selector of selectors) {
@@ -65,43 +98,82 @@ function parseLineNumberAttribute(thread: Element, attributeName: string): numbe
   return parseLineNumber(descendant?.getAttribute(attributeName));
 }
 
-function parseAutomatedCommentBody(thread: Element, script: Element): string | null {
+function formatAutomatedCommentBody(thread: Element, data: AutomatedCommentData): string | null {
+  const bodyHtml = data.props?.comment?.bodyHTML ?? data.props?.comment?.automatedComment?.message ?? null;
+  if (bodyHtml) {
+    const container = thread.ownerDocument.createElement('div');
+    container.innerHTML = bodyHtml;
+    return commentBodyToMarkdown(container).trim();
+  }
+
+  return data.props?.comment?.body?.trim() ?? null;
+}
+
+function parseAutomatedCommentData(script: Element): AutomatedCommentData | null {
   const raw = script.textContent?.trim();
   if (!raw) {
     return null;
   }
 
   try {
-    const data = JSON.parse(raw) as {
-      props?: {
-        comment?: {
-          bodyHTML?: string;
-          body?: string;
-          automatedComment?: {
-            message?: string;
-          };
-        };
-      };
-    };
-
-    const bodyHtml = data.props?.comment?.bodyHTML ?? data.props?.comment?.automatedComment?.message ?? null;
-    if (bodyHtml) {
-      const container = thread.ownerDocument.createElement('div');
-      container.innerHTML = bodyHtml;
-      return commentBodyToMarkdown(container).trim();
-    }
-
-    return data.props?.comment?.body?.trim() ?? null;
+    return JSON.parse(raw) as AutomatedCommentData;
   } catch {
     return null;
   }
 }
 
+function getAutomatedCommentPayloads(thread: Element): AutomatedCommentData[] {
+  return queryAll(thread, AUTOMATED_COMMENT_SELECTORS)
+    .map((script) => parseAutomatedCommentData(script))
+    .filter((data): data is AutomatedCommentData => data !== null);
+}
+
+function extractAutomatedMetadataFromPayloads(payloads: AutomatedCommentData[]): AutomatedMetadata {
+  for (const data of payloads) {
+    const diffEntry = data.props?.comment?.suggestion?.diffEntries?.[0];
+    const filePath = diffEntry?.path?.trim() || null;
+    const rightLines =
+      diffEntry?.diffLines
+        ?.filter((line) => line.type !== 'HUNK')
+        .map((line) => line.right)
+        .filter((line): line is number => typeof line === 'number' && Number.isFinite(line)) ?? [];
+
+    if (!filePath && rightLines.length === 0) {
+      continue;
+    }
+
+    return {
+      filePath,
+      lineRange:
+        rightLines.length > 0
+          ? {
+              startLine: rightLines[0],
+              endLine: rightLines[rightLines.length - 1]
+            }
+          : null
+    };
+  }
+
+  return { filePath: null, lineRange: null };
+}
+
 export function findReviewThreads(doc: Document): Element[] {
-  return queryAll(doc, THREAD_SELECTORS);
+  return queryAll(doc, THREAD_SELECTORS).filter((thread) => !isResolvedThread(thread) && !isNestedDiscussionWrapper(thread));
+}
+
+function isResolvedThread(thread: Element): boolean {
+  return thread.matches('details.review-thread-component[data-resolved="true"]');
+}
+
+function isNestedDiscussionWrapper(thread: Element): boolean {
+  return thread.id.startsWith('discussion_r') && Boolean(thread.closest('details.review-thread-component'));
 }
 
 export function extractFilePath(thread: Element): string | null {
+  return extractThreadData(thread).filePath;
+}
+
+function extractFilePathFromThread(thread: Element, automatedMetadata: AutomatedMetadata): string | null {
   const fileElement = queryFirst(thread, FILE_PATH_SELECTORS);
 
   const fromAttribute = fileElement?.getAttribute('data-path')?.trim();
@@ -115,10 +187,18 @@ export function extractFilePath(thread: Element): string | null {
   }
 
   const fromText = fileElement?.textContent?.trim() ?? '';
-  return fromText || null;
+  if (fromText) {
+    return fromText;
+  }
+
+  return automatedMetadata.filePath;
 }
 
 export function extractLineRange(thread: Element): LineRange {
+  return extractThreadData(thread).lineRange;
+}
+
+function extractLineRangeFromThread(thread: Element, automatedMetadata: AutomatedMetadata): LineRange {
   const startLine =
     parseLineNumber(thread.querySelector('.js-multi-line-preview-start')?.textContent) ??
     parseLineNumberAttribute(thread, 'data-start-line');
@@ -138,7 +218,7 @@ export function extractLineRange(thread: Element): LineRange {
     .filter((line): line is number => line !== null);
 
   if (visibleLineNumbers.length === 0) {
-    return { startLine: null, endLine: null };
+    return automatedMetadata.lineRange ?? { startLine: null, endLine: null };
   }
 
   return {
@@ -148,15 +228,22 @@ export function extractLineRange(thread: Element): LineRange {
 }
 
 export function extractCommentBlocks(thread: Element, lineRange: LineRange = extractLineRange(thread)): FeedbackComment[] {
+  return extractCommentBlocksFromThread(thread, lineRange, getAutomatedCommentPayloads(thread));
+}
 
+function extractCommentBlocksFromThread(
+  thread: Element,
+  lineRange: LineRange,
+  automatedPayloads: AutomatedCommentData[]
+): FeedbackComment[] {
   const inlineComments = queryAll(thread, COMMENT_BODY_SELECTORS)
     .map((comment) => commentBodyToMarkdown(comment))
     .map((comment) => comment.trim())
     .filter(Boolean)
     .map((body) => ({ ...lineRange, body }));
 
-  const automatedComments = queryAll(thread, AUTOMATED_COMMENT_SELECTORS)
-    .map((script) => parseAutomatedCommentBody(thread, script))
+  const automatedComments = automatedPayloads
+    .map((data) => formatAutomatedCommentBody(thread, data))
     .filter((comment): comment is string => Boolean(comment))
     .map((body) => ({ ...lineRange, body }));
 
@@ -168,4 +255,17 @@ export function extractCommentBlocks(thread: Element, lineRange: LineRange = ext
   }
 
   return Array.from(deduped.values());
+}
+
+export function extractThreadData(thread: Element): ThreadExtraction {
+  const automatedPayloads = getAutomatedCommentPayloads(thread);
+  const automatedMetadata = extractAutomatedMetadataFromPayloads(automatedPayloads);
+  const filePath = extractFilePathFromThread(thread, automatedMetadata);
+  const lineRange = extractLineRangeFromThread(thread, automatedMetadata);
+
+  return {
+    filePath,
+    lineRange,
+    comments: extractCommentBlocksFromThread(thread, lineRange, automatedPayloads)
+  };
 }
