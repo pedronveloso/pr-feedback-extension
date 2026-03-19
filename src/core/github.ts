@@ -230,7 +230,8 @@ function isClaudeAppHref(authorHref: string | undefined): boolean {
 }
 
 function cleanClaudeReview(markdown: string): string | null {
-  const withoutOpeningSentence = markdown.replace(
+  const withoutIntroWrapper = markdown.replace(/^## Code Review[\s\S]*?\n\n- - -\n\n/, '');
+  const withoutOpeningSentence = withoutIntroWrapper.replace(
     /(^|\n\n)(Overall this is a solid PR with good test coverage and meaningful improvements\.\s+A few things to address:)\n\n/,
     '$1'
   );

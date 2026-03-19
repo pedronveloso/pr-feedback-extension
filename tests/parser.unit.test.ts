@@ -270,7 +270,7 @@ describe('extractFeedbackFromDocument', () => {
     expect(result.entries).toEqual([]);
     expect(result.warnings).toEqual([]);
     expect(result.claudeReview).toBe(
-      '## Code Review\n\n- - -\n\n### Bug Risk: `thing()`\n\nUse `otherThing()`.\n\n```\nconst value = thing();\n```'
+      '### Bug Risk: `thing()`\n\nUse `otherThing()`.\n\n```\nconst value = thing();\n```'
     );
   });
 
@@ -295,7 +295,7 @@ describe('extractFeedbackFromDocument', () => {
 
     const result = extractFeedbackFromDocument(doc);
 
-    expect(result.claudeReview).toBe('## Code Review\n\n- - -\n\n### Minor\n\nCheck `value`.');
+    expect(result.claudeReview).toBe('### Minor\n\nCheck `value`.');
   });
 });
 
