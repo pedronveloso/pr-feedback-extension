@@ -34,6 +34,26 @@ body {
   gap: 8px;
 }
 
+.popup__tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.popup__tabs button[aria-selected="true"] {
+  background: #163f2b;
+  color: #fff;
+}
+
+.popup__tabs button[aria-selected="false"] {
+  background: #fff;
+  color: #214f36;
+}
+
+.popup__subactions {
+  display: flex;
+  gap: 8px;
+}
+
 button {
   border: 1px solid #214f36;
   background: #214f36;
@@ -71,6 +91,28 @@ button:disabled {
   box-sizing: border-box;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 12px;
+  line-height: 1.45;
+  background: #fff;
+  color: #102017;
+}
+
+#logs-panel[hidden],
+#logs-actions[hidden],
+#logs-tab[hidden],
+#output[hidden] {
+  display: none;
+}
+
+#logs-output {
+  width: 100%;
+  min-height: 300px;
+  resize: vertical;
+  border: 1px solid #9db4a4;
+  border-radius: 8px;
+  padding: 10px;
+  box-sizing: border-box;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 11px;
   line-height: 1.45;
   background: #fff;
   color: #102017;

@@ -1,4 +1,5 @@
 import type { FeedbackComment, FileFeedbackEntry, LineRange } from './types';
+import { debugLog } from './debug';
 import { commentBodyToMarkdown } from './markdown';
 
 const THREAD_SELECTORS = ['details.review-thread-component', '[id^="discussion_r"]'];
@@ -11,6 +12,7 @@ const AUTOMATED_COMMENT_SELECTORS = [
   'react-partial[partial-name="automated-review-comment"] script[data-target="react-partial.embeddedData"]',
   'script[data-target="react-partial.embeddedData"]'
 ];
+const CLAUDE_COMMENT_SELECTORS = ['.timeline-comment', '.js-comment-container .timeline-comment'];
 
 interface AutomatedCommentData {
   props?: {
@@ -161,12 +163,81 @@ export function findReviewThreads(doc: Document): Element[] {
   return queryAll(doc, THREAD_SELECTORS).filter((thread) => !isResolvedThread(thread) && !isNestedDiscussionWrapper(thread));
 }
 
+export function extractClaudeReview(doc: Document): string | null {
+  const candidates = queryAll(doc, CLAUDE_COMMENT_SELECTORS);
+  debugLog({
+    source: 'content',
+    event: 'claude-review:candidates-scanned',
+    detail: JSON.stringify({ candidateCount: candidates.length })
+  });
+  const comment = candidates.find((candidate) => isClaudeBotComment(candidate));
+  const body = comment?.querySelector('.js-comment-body');
+
+  if (!body) {
+    debugLog({
+      source: 'content',
+      level: 'warn',
+      event: 'claude-review:not-found'
+    });
+    return null;
+  }
+
+  const markdown = commentBodyToMarkdown(body).trim();
+  debugLog({
+    source: 'content',
+    event: 'claude-review:raw-markdown',
+    detail: markdown
+  });
+  const cleaned = markdown ? cleanClaudeReview(markdown) : null;
+  debugLog({
+    source: 'content',
+    event: 'claude-review:cleaned-markdown',
+    detail: cleaned ?? '<empty>'
+  });
+  return cleaned;
+}
+
 function isResolvedThread(thread: Element): boolean {
   return thread.matches('details.review-thread-component[data-resolved="true"]');
 }
 
 function isNestedDiscussionWrapper(thread: Element): boolean {
   return thread.id.startsWith('discussion_r') && Boolean(thread.closest('details.review-thread-component'));
+}
+
+function isClaudeBotComment(comment: Element): boolean {
+  const author = comment.querySelector<HTMLAnchorElement>('.timeline-comment-header .author');
+  const authorName = author?.textContent?.trim().toLowerCase();
+  const authorHref = author?.getAttribute('href')?.trim().toLowerCase();
+  const isBot = Array.from(comment.querySelectorAll('.timeline-comment-header .Label')).some(
+    (label) => label.textContent?.trim().toLowerCase() === 'bot'
+  );
+  debugLog({
+    source: 'content',
+    event: 'claude-review:candidate-metadata',
+      detail: JSON.stringify({ authorName, authorHref, isBot })
+  });
+
+  return authorName === 'claude' && isClaudeAppHref(authorHref) && isBot;
+}
+
+function isClaudeAppHref(authorHref: string | undefined): boolean {
+  if (!authorHref) {
+    return false;
+  }
+
+  return authorHref === '/apps/claude' || authorHref === 'https://github.com/apps/claude';
+}
+
+function cleanClaudeReview(markdown: string): string | null {
+  const withoutIntroWrapper = markdown.replace(/^## Code Review[\s\S]*?\n\n- - -\n\n/, '');
+  const withoutOpeningSentence = withoutIntroWrapper.replace(
+    /(^|\n\n)(Overall this is a solid PR with good test coverage and meaningful improvements\.\s+A few things to address:)\n\n/,
+    '$1'
+  );
+  const withoutPositives = withoutOpeningSentence.replace(/\n\n- - -\n\n### Positives[\s\S]*$/m, '').trim();
+
+  return withoutPositives || null;
 }
 
 export function extractFilePath(thread: Element): string | null {

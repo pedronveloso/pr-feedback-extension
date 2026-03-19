@@ -1,8 +1,13 @@
 import {
+  CLEAR_DEBUG_LOGS_MESSAGE_TYPE,
   CONTENT_SCRIPT_READY_MESSAGE_TYPE,
+  DEBUG_LOG_MESSAGE_TYPE,
+  GET_DEBUG_LOGS_MESSAGE_TYPE,
   EXTRACT_FEEDBACK_MESSAGE_TYPE,
   isContentScriptReadyResponse,
   isExtractFeedbackResponse,
+  type DebugLogEntry,
+  type DebugRuntimeResponse,
   type ContentScriptRequest,
   type ContentScriptResponse,
   type ExtractFeedbackDiagnostics,
@@ -11,6 +16,13 @@ import {
 } from '../shared/messages';
 
 interface PopupElements {
+  outputTab: HTMLButtonElement;
+  logsTab: HTMLButtonElement;
+  logsActions: HTMLDivElement;
+  copyLogsButton: HTMLButtonElement;
+  clearLogsButton: HTMLButtonElement;
+  logsPanel: HTMLElement;
+  logsOutput: HTMLTextAreaElement;
   output: HTMLTextAreaElement;
   status: HTMLParagraphElement;
   extractButton: HTMLButtonElement;
@@ -26,6 +38,14 @@ interface ClipboardApi {
   writeText(text: string): Promise<void>;
 }
 
+interface RuntimeApi {
+  sendMessage(message: unknown): Promise<DebugRuntimeResponse>;
+}
+
+interface ManagementApi {
+  getSelf(): Promise<{ installType: string }>;
+}
+
 interface ScriptingApi {
   executeScript(injection: chrome.scripting.ScriptInjection<[], unknown>): Promise<unknown>;
 }
@@ -33,6 +53,8 @@ interface ScriptingApi {
 export interface PopupDependencies {
   document: Document;
   tabsApi: TabsApi;
+  runtimeApi?: RuntimeApi;
+  managementApi?: ManagementApi;
   scriptingApi?: ScriptingApi;
   clipboardApi?: ClipboardApi;
   fallbackCopy?: (output: HTMLTextAreaElement, doc: Document) => boolean;
@@ -43,6 +65,7 @@ export interface PopupDependencies {
 export interface PopupController {
   extractFeedback(): Promise<void>;
   copyOutput(): Promise<void>;
+  refreshLogs(): Promise<void>;
 }
 
 interface ActiveTabInfo {
@@ -62,16 +85,52 @@ type ExtractionAttempt =
   | { kind: 'error'; descriptor: PopupErrorDescriptor; error?: unknown };
 
 function getPopupElements(doc: Document): PopupElements {
+  const outputTab = doc.querySelector<HTMLButtonElement>('#output-tab');
+  const logsTab = doc.querySelector<HTMLButtonElement>('#logs-tab');
+  const logsActions = doc.querySelector<HTMLDivElement>('#logs-actions');
+  const copyLogsButton = doc.querySelector<HTMLButtonElement>('#copy-logs-button');
+  const clearLogsButton = doc.querySelector<HTMLButtonElement>('#clear-logs-button');
+  const logsPanel = doc.querySelector<HTMLElement>('#logs-panel');
+  const logsOutput = doc.querySelector<HTMLTextAreaElement>('#logs-output');
   const output = doc.querySelector<HTMLTextAreaElement>('#output');
   const status = doc.querySelector<HTMLParagraphElement>('#status');
   const extractButton = doc.querySelector<HTMLButtonElement>('#extract-button');
   const copyButton = doc.querySelector<HTMLButtonElement>('#copy-button');
 
-  if (!output || !status || !extractButton || !copyButton) {
+  if (!outputTab || !logsTab || !logsActions || !copyLogsButton || !clearLogsButton || !logsPanel || !logsOutput || !output || !status || !extractButton || !copyButton) {
     throw new Error('Popup elements not found.');
   }
 
-  return { output, status, extractButton, copyButton };
+  return {
+    outputTab,
+    logsTab,
+    logsActions,
+    copyLogsButton,
+    clearLogsButton,
+    logsPanel,
+    logsOutput,
+    output,
+    status,
+    extractButton,
+    copyButton
+  };
+}
+
+function formatDebugLogs(logs: DebugLogEntry[]): string {
+  if (logs.length === 0) {
+    return 'No debug logs captured yet.';
+  }
+
+  return logs
+    .map((log) => {
+      const parts = [log.timestamp, `[${log.source}]`, log.level.toUpperCase(), log.event];
+      if (log.detail) {
+        parts.push(log.detail);
+      }
+
+      return parts.join(' ');
+    })
+    .join('\n');
 }
 
 function createLegacyCopyFallback(doc: Document): (output: HTMLTextAreaElement) => boolean {
@@ -149,6 +208,8 @@ function defaultWait(ms: number): Promise<void> {
 export function mountPopup({
   document,
   tabsApi,
+  runtimeApi,
+  managementApi,
   scriptingApi,
   clipboardApi,
   fallbackCopy,
@@ -157,14 +218,65 @@ export function mountPopup({
 }: PopupDependencies): PopupController {
   const elements = getPopupElements(document);
   const legacyCopy = fallbackCopy ?? ((output, doc) => createLegacyCopyFallback(doc)(output));
+  let logsEnabled = false;
 
   const setStatus = (message: string): void => {
     elements.status.textContent = message;
   };
 
+  const logPopupEvent = (event: string, detail?: string): void => {
+    if (!runtimeApi) {
+      return;
+    }
+
+    void runtimeApi.sendMessage({
+      type: DEBUG_LOG_MESSAGE_TYPE,
+      entry: {
+        timestamp: new Date().toISOString(),
+        source: 'popup',
+        level: 'info',
+        event,
+        detail
+      }
+    }).catch(() => undefined);
+  };
+
+  const setActivePanel = (panel: 'output' | 'logs'): void => {
+    const showLogs = panel === 'logs' && logsEnabled;
+    elements.outputTab.setAttribute('aria-selected', String(!showLogs));
+    elements.logsTab.setAttribute('aria-selected', String(showLogs));
+    elements.output.hidden = showLogs;
+    elements.logsPanel.hidden = !showLogs;
+    elements.logsActions.hidden = !showLogs;
+  };
+
+  const refreshLogs = async (): Promise<void> => {
+    if (!logsEnabled || !runtimeApi) {
+      elements.logsOutput.value = 'Debug logs are unavailable in this build.';
+      return;
+    }
+
+    const response = await runtimeApi.sendMessage({ type: GET_DEBUG_LOGS_MESSAGE_TYPE });
+    if ('ok' in response && response.ok === false) {
+      throw new Error(response.error);
+    }
+
+    if (!('logs' in response) || !Array.isArray(response.logs)) {
+      throw new Error('Received an invalid debug logs response.');
+    }
+
+    elements.logsOutput.value = formatDebugLogs(response.logs);
+  };
+
   const showPopupError = (descriptor: PopupErrorDescriptor, error?: unknown): void => {
     setStatus(descriptor.status);
     elements.output.value = formatPopupErrorReport(descriptor, error);
+  };
+
+  const showLogsError = (status: string, error?: unknown): void => {
+    setStatus(status);
+    const errorMessage = getErrorMessage(error);
+    elements.logsOutput.value = errorMessage ? `${status}\n\nBrowser detail: ${errorMessage}` : status;
   };
 
   const renderExtractionResponse = (response: ExtractFeedbackResponse): void => {
@@ -354,6 +466,7 @@ export function mountPopup({
   const extractFeedback = async (): Promise<void> => {
     elements.extractButton.disabled = true;
     setStatus('Extracting...');
+    logPopupEvent('popup:extract-clicked');
 
     try {
       const activeTab = await getActiveTabInfo();
@@ -370,10 +483,12 @@ export function mountPopup({
       const attempt = await requestExtractionWithRecovery(activeTab);
       if (attempt.kind === 'error') {
         showPopupError(attempt.descriptor, attempt.error);
+        await refreshLogs().catch(() => undefined);
         return;
       }
 
       renderExtractionResponse(attempt.response);
+      await refreshLogs().catch(() => undefined);
     } catch (error) {
       showPopupError({
         code: 'PRFE-POPUP-999',
@@ -381,6 +496,7 @@ export function mountPopup({
         details: ['This is an unhandled popup-side failure. Check the popup extraction flow in `src/popup/app.ts`.'],
         status: 'Refresh the pull request page and try again.'
       }, error);
+      await refreshLogs().catch(() => undefined);
     } finally {
       elements.extractButton.disabled = false;
     }
@@ -409,6 +525,51 @@ export function mountPopup({
     }
   };
 
+  const copyLogs = async (): Promise<void> => {
+    if (!elements.logsOutput.value.trim()) {
+      setStatus('No logs to copy yet.');
+      return;
+    }
+
+    try {
+      if (!clipboardApi) {
+        throw new Error('Clipboard API unavailable.');
+      }
+
+      await clipboardApi.writeText(elements.logsOutput.value);
+      setStatus('Copied logs to clipboard.');
+    } catch {
+      if (!legacyCopy(elements.logsOutput, document)) {
+        setStatus('Unable to copy logs.');
+        return;
+      }
+
+      setStatus('Copied logs to clipboard.');
+    }
+  };
+
+  const clearLogs = async (): Promise<void> => {
+    if (!logsEnabled || !runtimeApi) {
+      return;
+    }
+
+    try {
+      const response = await runtimeApi.sendMessage({ type: CLEAR_DEBUG_LOGS_MESSAGE_TYPE });
+      if ('ok' in response && response.ok === false) {
+        throw new Error(response.error);
+      }
+
+      if (!('ok' in response) || response.ok !== true) {
+        throw new Error('Received an invalid clear-logs response.');
+      }
+
+      await refreshLogs();
+      setStatus('Debug logs cleared.');
+    } catch (error) {
+      showLogsError('Could not clear debug logs.', error);
+    }
+  };
+
   elements.extractButton.addEventListener('click', () => {
     void extractFeedback();
   });
@@ -417,12 +578,66 @@ export function mountPopup({
     void copyOutput();
   });
 
+  elements.outputTab.addEventListener('click', () => {
+    setActivePanel('output');
+  });
+
+  elements.logsTab.addEventListener('click', async () => {
+    if (!logsEnabled) {
+      return;
+    }
+
+    try {
+      await refreshLogs();
+      setActivePanel('logs');
+    } catch (error) {
+      showLogsError('Could not load debug logs.', error);
+      setActivePanel('logs');
+    }
+  });
+
+  elements.copyLogsButton.addEventListener('click', () => {
+    void copyLogs();
+  });
+
+  elements.clearLogsButton.addEventListener('click', () => {
+    void clearLogs();
+  });
+
+  const initializeDeveloperUi = async (): Promise<void> => {
+    if (!managementApi) {
+      elements.logsTab.hidden = true;
+      elements.logsActions.hidden = true;
+      elements.logsPanel.hidden = true;
+      return;
+    }
+
+    try {
+      const self = await managementApi.getSelf();
+      logsEnabled = self.installType === 'development';
+    } catch {
+      logsEnabled = false;
+    }
+
+    elements.logsTab.hidden = !logsEnabled;
+    elements.logsActions.hidden = true;
+    elements.logsPanel.hidden = true;
+    if (logsEnabled) {
+      await refreshLogs().catch(() => undefined);
+      logPopupEvent('popup:developer-ui-enabled');
+    }
+  };
+
+  setActivePanel('output');
+  void initializeDeveloperUi();
+
   if (autoExtract) {
     void extractFeedback();
   }
 
   return {
     extractFeedback,
-    copyOutput
+    copyOutput,
+    refreshLogs
   };
 }

@@ -24,8 +24,19 @@
         <button id="extract-button" type="button">Extract</button>
         <button id="copy-button" type="button">Copy</button>
       </div>
+      <div class="popup__tabs" role="tablist" aria-label="Popup views">
+        <button id="output-tab" type="button" role="tab" aria-selected="true">Output</button>
+        <button id="logs-tab" type="button" role="tab" aria-selected="false" hidden>Logs</button>
+      </div>
+      <div id="logs-actions" class="popup__subactions" hidden>
+        <button id="copy-logs-button" type="button">Copy logs</button>
+        <button id="clear-logs-button" type="button">Clear logs</button>
+      </div>
       <p id="status" aria-live="polite"></p>
       <textarea id="output" readonly spellcheck="false" placeholder="Extracted feedback will appear here."></textarea>
+      <section id="logs-panel" hidden>
+        <textarea id="logs-output" readonly spellcheck="false" placeholder="Debug logs will appear here."></textarea>
+      </section>
     </main>
   </body>
 </html>

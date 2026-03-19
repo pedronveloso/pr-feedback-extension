@@ -16,5 +16,6 @@ export interface FileFeedbackEntry {
 
 export interface FeedbackExtractionResult {
   entries: FileFeedbackEntry[];
+  claudeReview: string | null;
   warnings: string[];
 }

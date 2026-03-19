@@ -131,4 +131,25 @@ describe('fixture integration', () => {
     expect(output).toContain('Modifier.weight(1f)');
     expect(output).toContain('androidx.compose.foundation.Image');
   });
+
+  it('combines inline PR feedback with the Claude bot review block', () => {
+    const html = loadFixture('example-with-claude-code-review.html');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    const result = extractFeedbackFromDocument(doc);
+    const output = formatFeedback(result.entries, result.claudeReview);
+
+    expect(result.warnings).toEqual([]);
+    expect(result.entries.length).toBeGreaterThan(0);
+    expect(result.claudeReview).not.toContain('## Code Review');
+    expect(result.claudeReview).toContain('```');
+    expect(result.claudeReview).toContain('`Base64.getDecoder()`');
+    expect(result.claudeReview).not.toContain('Overall this is a solid PR with good test coverage and meaningful improvements.');
+    expect(result.claudeReview).not.toContain('### Positives');
+
+    expect(output).toContain('PR feedback from first reviewer:');
+    expect(output).toContain('PR feedback from second reviewer:');
+    expect(output).toContain('On `app/src/main/java/app/altsea/util/UrlCleanupUtil.kt`:');
+    expect(output).toContain('### Bug Risk: `Base64.getDecoder()` vs `Base64.getUrlDecoder()`');
+  });
 });
