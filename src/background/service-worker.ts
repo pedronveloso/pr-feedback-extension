@@ -5,7 +5,9 @@ import {
   isClearDebugLogsRequest,
   isDebugLogRequest,
   isGetDebugLogsRequest,
-  type DebugLogEntry
+  type DebugLogEntry,
+  type DebugRuntimeErrorResponse,
+  type DebugRuntimeResponse
 } from '../shared/messages';
 
 const DEBUG_LOGS_STORAGE_KEY = 'debugLogs';
@@ -48,25 +50,70 @@ async function clearLogs(): Promise<void> {
   }
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  void clearLogs();
-});
+function toDebugRuntimeErrorResponse(error: unknown, fallbackMessage: string): DebugRuntimeErrorResponse {
+  if (error instanceof Error && error.message.trim()) {
+    return { ok: false, error: error.message.trim() };
+  }
 
-chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (typeof error === 'string' && error.trim()) {
+    return { ok: false, error: error.trim() };
+  }
+
+  return { ok: false, error: fallbackMessage };
+}
+
+interface DebugLogOperations {
+  appendLog(entry: DebugLogEntry): Promise<void>;
+  hydrateLogs(): Promise<void>;
+  clearLogs(): Promise<void>;
+  getLogs(): DebugLogEntry[];
+}
+
+type DebugRuntimeSendResponse = (response: DebugRuntimeResponse) => void;
+
+const defaultDebugLogOperations: DebugLogOperations = {
+  appendLog,
+  hydrateLogs,
+  clearLogs,
+  getLogs: () => logBuffer
+};
+
+export function handleDebugRuntimeMessage(
+  message: unknown,
+  sendResponse: DebugRuntimeSendResponse,
+  operations: DebugLogOperations = defaultDebugLogOperations
+): boolean {
   if (isDebugLogRequest(message)) {
-    void appendLog(message.entry).then(() => sendResponse({ ok: true }));
+    void operations
+      .appendLog(message.entry)
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse(toDebugRuntimeErrorResponse(error, 'Could not append debug log.')));
     return true;
   }
 
   if (isGetDebugLogsRequest(message)) {
-    void hydrateLogs().then(() => sendResponse({ logs: logBuffer }));
+    void operations
+      .hydrateLogs()
+      .then(() => sendResponse({ logs: operations.getLogs() }))
+      .catch((error) => sendResponse(toDebugRuntimeErrorResponse(error, 'Could not load debug logs.')));
     return true;
   }
 
   if (isClearDebugLogsRequest(message)) {
-    void clearLogs().then(() => sendResponse({ ok: true }));
+    void operations
+      .clearLogs()
+      .then(() => sendResponse({ ok: true }))
+      .catch((error) => sendResponse(toDebugRuntimeErrorResponse(error, 'Could not clear debug logs.')));
     return true;
   }
 
   return false;
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  void clearLogs().catch(() => undefined);
+});
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  return handleDebugRuntimeMessage(message, sendResponse);
 });

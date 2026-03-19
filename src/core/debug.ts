@@ -8,6 +8,9 @@ export interface DebugLogPayload {
   detail?: string;
 }
 
+const MAX_DEBUG_DETAIL_LENGTH = 500;
+const URL_PATTERN = /https?:\/\/[^\s"'`<>]+/g;
+
 type DebugLogger = (entry: DebugLogPayload) => void;
 
 let debugLogger: DebugLogger = () => {};
@@ -18,4 +21,21 @@ export function setDebugLogger(logger: DebugLogger): void {
 
 export function debugLog(entry: DebugLogPayload): void {
   debugLogger(entry);
+}
+
+export function sanitizeDebugDetail(detail?: string): string | undefined {
+  if (!detail) {
+    return undefined;
+  }
+
+  const sanitized = detail.replace(URL_PATTERN, '[redacted-url]').trim();
+  if (!sanitized) {
+    return undefined;
+  }
+
+  if (sanitized.length <= MAX_DEBUG_DETAIL_LENGTH) {
+    return sanitized;
+  }
+
+  return `${sanitized.slice(0, MAX_DEBUG_DETAIL_LENGTH - 14)}...[truncated]`;
 }

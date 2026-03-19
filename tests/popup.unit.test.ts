@@ -160,6 +160,95 @@ describe('mountPopup', () => {
     expect(doc.querySelector('#logs-tab')?.hasAttribute('hidden')).toBe(true);
   });
 
+  it('shows a logs error when loading logs fails from the Logs tab', async () => {
+    const doc = createPopupDocument();
+    const tabsApi = createTabsApi({
+      ok: true,
+      output: 'Formatted output',
+      warnings: [],
+      diagnostics: {
+        threadCount: 1,
+        entryCount: 1,
+        warningCount: 0,
+        outputLength: 16,
+        warnings: []
+      }
+    });
+    const runtimeApi = {
+      sendMessage: vi
+        .fn()
+        .mockResolvedValue({ ok: true })
+        .mockResolvedValueOnce({ logs: [] })
+        .mockRejectedValueOnce(new Error('storage unavailable'))
+    };
+    const managementApi = { getSelf: vi.fn(async () => ({ installType: 'development' })) };
+
+    mountPopup({
+      document: doc,
+      tabsApi,
+      runtimeApi,
+      managementApi,
+      scriptingApi: { executeScript: vi.fn(async () => undefined) },
+      clipboardApi: { writeText: vi.fn(async () => undefined) },
+      autoExtract: false
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    doc.querySelector<HTMLButtonElement>('#logs-tab')?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(doc.querySelector('#status')?.textContent).toBe('Could not load debug logs.');
+    expect(doc.querySelector<HTMLTextAreaElement>('#logs-output')?.value).toContain('Browser detail: storage unavailable');
+    expect(doc.querySelector<HTMLElement>('#logs-panel')?.hidden).toBe(false);
+  });
+
+  it('shows a logs error when clearing logs fails', async () => {
+    const doc = createPopupDocument();
+    const tabsApi = createTabsApi({
+      ok: true,
+      output: 'Formatted output',
+      warnings: [],
+      diagnostics: {
+        threadCount: 1,
+        entryCount: 1,
+        warningCount: 0,
+        outputLength: 16,
+        warnings: []
+      }
+    });
+    const runtimeApi = {
+      sendMessage: vi
+        .fn()
+        .mockResolvedValue({ ok: true })
+        .mockResolvedValueOnce({ logs: [] })
+        .mockRejectedValueOnce(new Error('service worker restarted'))
+    };
+    const managementApi = { getSelf: vi.fn(async () => ({ installType: 'development' })) };
+
+    mountPopup({
+      document: doc,
+      tabsApi,
+      runtimeApi,
+      managementApi,
+      scriptingApi: { executeScript: vi.fn(async () => undefined) },
+      clipboardApi: { writeText: vi.fn(async () => undefined) },
+      autoExtract: false
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    doc.querySelector<HTMLButtonElement>('#clear-logs-button')?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(doc.querySelector('#status')?.textContent).toBe('Could not clear debug logs.');
+    expect(doc.querySelector<HTMLTextAreaElement>('#logs-output')?.value).toContain('Browser detail: service worker restarted');
+  });
+
   it('shows an invalid-response status for malformed content-script replies', async () => {
     const doc = createPopupDocument();
     const tabsApi = createContentScriptTabsApi({ ok: true, warnings: [] } as unknown as ContentScriptResponse);

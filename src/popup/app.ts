@@ -257,13 +257,26 @@ export function mountPopup({
     }
 
     const response = await runtimeApi.sendMessage({ type: GET_DEBUG_LOGS_MESSAGE_TYPE });
-    const logs = 'logs' in response && Array.isArray(response.logs) ? response.logs : [];
-    elements.logsOutput.value = formatDebugLogs(logs);
+    if ('ok' in response && response.ok === false) {
+      throw new Error(response.error);
+    }
+
+    if (!('logs' in response) || !Array.isArray(response.logs)) {
+      throw new Error('Received an invalid debug logs response.');
+    }
+
+    elements.logsOutput.value = formatDebugLogs(response.logs);
   };
 
   const showPopupError = (descriptor: PopupErrorDescriptor, error?: unknown): void => {
     setStatus(descriptor.status);
     elements.output.value = formatPopupErrorReport(descriptor, error);
+  };
+
+  const showLogsError = (status: string, error?: unknown): void => {
+    setStatus(status);
+    const errorMessage = getErrorMessage(error);
+    elements.logsOutput.value = errorMessage ? `${status}\n\nBrowser detail: ${errorMessage}` : status;
   };
 
   const renderExtractionResponse = (response: ExtractFeedbackResponse): void => {
@@ -540,9 +553,21 @@ export function mountPopup({
       return;
     }
 
-    await runtimeApi.sendMessage({ type: CLEAR_DEBUG_LOGS_MESSAGE_TYPE });
-    await refreshLogs();
-    setStatus('Debug logs cleared.');
+    try {
+      const response = await runtimeApi.sendMessage({ type: CLEAR_DEBUG_LOGS_MESSAGE_TYPE });
+      if ('ok' in response && response.ok === false) {
+        throw new Error(response.error);
+      }
+
+      if (!('ok' in response) || response.ok !== true) {
+        throw new Error('Received an invalid clear-logs response.');
+      }
+
+      await refreshLogs();
+      setStatus('Debug logs cleared.');
+    } catch (error) {
+      showLogsError('Could not clear debug logs.', error);
+    }
   };
 
   elements.extractButton.addEventListener('click', () => {
@@ -557,13 +582,18 @@ export function mountPopup({
     setActivePanel('output');
   });
 
-  elements.logsTab.addEventListener('click', () => {
+  elements.logsTab.addEventListener('click', async () => {
     if (!logsEnabled) {
       return;
     }
 
-    void refreshLogs();
-    setActivePanel('logs');
+    try {
+      await refreshLogs();
+      setActivePanel('logs');
+    } catch (error) {
+      showLogsError('Could not load debug logs.', error);
+      setActivePanel('logs');
+    }
   });
 
   elements.copyLogsButton.addEventListener('click', () => {

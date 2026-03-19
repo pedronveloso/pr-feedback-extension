@@ -1,5 +1,5 @@
 import { findReviewThreads } from '../core/github';
-import { debugLog, setDebugLogger } from '../core/debug';
+import { debugLog, sanitizeDebugDetail, setDebugLogger } from '../core/debug';
 import { extractFeedbackFromDocument } from '../core/parser';
 import { formatFeedback } from '../core/formatter';
 
@@ -27,18 +27,21 @@ function isContentScriptReadyRequest(message: unknown): message is { type: typeo
   );
 }
 
-setDebugLogger(({ event, level = 'info', source = 'content', detail }) => {
-  const entry = {
-    timestamp: new Date().toISOString(),
-    source,
-    level,
-    event,
-    detail
-  };
-  const consoleMethod = level === 'error' ? console.error : level === 'warn' ? console.warn : console.info;
-  consoleMethod('[PR Feedback Extractor]', event, detail ?? '');
-  void chrome.runtime.sendMessage({ type: DEBUG_LOG_MESSAGE_TYPE, entry }).catch(() => undefined);
-});
+if (import.meta.env.DEV) {
+  setDebugLogger(({ event, level = 'info', source = 'content', detail }) => {
+    const sanitizedDetail = sanitizeDebugDetail(detail);
+    const entry = {
+      timestamp: new Date().toISOString(),
+      source,
+      level,
+      event,
+      detail: sanitizedDetail
+    };
+    const consoleMethod = level === 'error' ? console.error : level === 'warn' ? console.warn : console.info;
+    consoleMethod('[PR Feedback Extractor]', event, sanitizedDetail ?? '');
+    void chrome.runtime.sendMessage({ type: DEBUG_LOG_MESSAGE_TYPE, entry }).catch(() => undefined);
+  });
+}
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (isContentScriptReadyRequest(message)) {

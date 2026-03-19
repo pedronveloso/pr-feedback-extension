@@ -68,6 +68,11 @@ export interface GetDebugLogsResponse {
   logs: DebugLogEntry[];
 }
 
+export interface DebugRuntimeErrorResponse {
+  ok: false;
+  error: string;
+}
+
 export interface ClearDebugLogsResponse {
   ok: true;
 }
@@ -75,7 +80,7 @@ export interface ClearDebugLogsResponse {
 export type ContentScriptRequest = ExtractFeedbackRequest | ContentScriptReadyRequest;
 export type ContentScriptResponse = ExtractFeedbackResponse | ContentScriptReadyResponse;
 export type DebugRuntimeRequest = DebugLogRequest | GetDebugLogsRequest | ClearDebugLogsRequest;
-export type DebugRuntimeResponse = GetDebugLogsResponse | ClearDebugLogsResponse;
+export type DebugRuntimeResponse = GetDebugLogsResponse | ClearDebugLogsResponse | DebugRuntimeErrorResponse;
 
 function isDebugLogEntry(message: unknown): message is DebugLogEntry {
   if (!message || typeof message !== 'object') {
