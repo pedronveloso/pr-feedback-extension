@@ -164,6 +164,40 @@ describe('extractFeedbackFromDocument', () => {
     expect(warnings).toEqual([]);
   });
 
+  it('extracts feedback from newer thread headers that expose the file path as a direct link', () => {
+    const doc = createDocument(`
+      <review-thread-collapsible class="review-thread-component" data-resolved="false">
+        <div>
+          <span>
+            <a class="text-mono">src/feature.ts</a>
+          </span>
+        </div>
+        <div data-target="review-thread-collapsible.body">
+          <div>
+            <span class="js-multi-line-preview-start">+44</span>
+            to
+            <span class="js-multi-line-preview-end">+48</span>
+          </div>
+          <div class="js-inline-comments-container">
+            <div class="js-comment review-comment">
+              <div class="js-comment-body"><p>Direct header links should still work.</p></div>
+            </div>
+          </div>
+        </div>
+      </review-thread-collapsible>
+    `);
+
+    const { entries, warnings } = extractFeedbackFromDocument(doc);
+
+    expect(entries).toEqual([
+      {
+        filePath: 'src/feature.ts',
+        comments: [{ startLine: 44, endLine: 48, body: 'Direct header links should still work.' }]
+      }
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
   it('falls back to automated review JSON metadata when file path and line range are not exposed in the thread header', () => {
     const doc = createDocument(`
       <div id="discussion_r123">

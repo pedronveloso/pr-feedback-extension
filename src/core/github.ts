@@ -2,8 +2,15 @@ import type { FeedbackComment, FileFeedbackEntry, LineRange } from './types';
 import { debugLog } from './debug';
 import { commentBodyToMarkdown } from './markdown';
 
-const THREAD_SELECTORS = ['details.review-thread-component', '[id^="discussion_r"]'];
-const FILE_PATH_SELECTORS = ['summary a.text-mono', 'summary [data-path]', '[data-path]', 'summary a[title]'];
+const THREAD_SELECTORS = ['.review-thread-component', '[id^="discussion_r"]'];
+const FILE_PATH_SELECTORS = [
+  'summary a.text-mono',
+  'a.text-mono',
+  'summary [data-path]',
+  '[data-path]',
+  'summary a[title]',
+  'a[title]'
+];
 const COMMENT_BODY_SELECTORS = [
   '.js-inline-comments-container .js-comment.review-comment .js-comment-body',
   '.js-comment.review-comment .js-comment-body'
@@ -198,11 +205,11 @@ export function extractClaudeReview(doc: Document): string | null {
 }
 
 function isResolvedThread(thread: Element): boolean {
-  return thread.matches('details.review-thread-component[data-resolved="true"]');
+  return thread.matches('.review-thread-component[data-resolved="true"]');
 }
 
 function isNestedDiscussionWrapper(thread: Element): boolean {
-  return thread.id.startsWith('discussion_r') && Boolean(thread.closest('details.review-thread-component'));
+  return thread.id.startsWith('discussion_r') && Boolean(thread.closest('.review-thread-component'));
 }
 
 function isClaudeBotComment(comment: Element): boolean {

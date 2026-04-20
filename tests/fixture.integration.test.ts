@@ -117,6 +117,38 @@ describe('fixture integration', () => {
     expect(output).toContain('From lines 222 to 227:');
   });
 
+  it('extracts Copilot feedback from the April 26 export using the newer thread header layout', () => {
+    const html = loadFixture('Feature_april_26.html');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    const result = extractFeedbackFromDocument(doc);
+    const output = formatFeedback(result.entries);
+
+    expect(result.warnings).toEqual([]);
+    expect(result.entries).toEqual([
+      {
+        filePath: 'app/src/test/java/com/pedronveloso/lazulite/LocalizationResourcesTest.kt',
+        comments: [
+          expect.objectContaining({
+            startLine: 14,
+            endLine: 72,
+            body: expect.stringContaining('`path()` is called with paths that already start with `app/')
+          }),
+          expect.objectContaining({
+            startLine: 56,
+            endLine: 59,
+            body: expect.stringContaining('`DocumentBuilderFactory` is created with default settings')
+          })
+        ]
+      }
+    ]);
+    expect(output).toContain('On `app/src/test/java/com/pedronveloso/lazulite/LocalizationResourcesTest.kt`:');
+    expect(output).toContain('From lines 14 to 72:');
+    expect(output).toContain('From lines 56 to 59:');
+    expect(output).toContain('`path()` is called with paths that already start with `app/');
+    expect(output).toContain('`DocumentBuilderFactory` is created with default settings');
+  });
+
   it('extracts automated review feedback from the Several March fixes export', () => {
     const html = loadFixture('Several March fixes (16 & 17) by pedronveloso · Pull Request #46 · pedronveloso_altsea.html');
     const doc = new DOMParser().parseFromString(html, 'text/html');
