@@ -13,6 +13,34 @@ function loadFixture(name: string): string {
 }
 
 describe('fixture integration', () => {
+  it('splits the compact exported sample by reviewer and excludes PR-author replies', () => {
+    const html = loadFixture('multi-reviewer.html');
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+
+    const result = extractFeedbackFromDocument(doc);
+    const output = formatFeedback(result.entries, result.claudeReview);
+    const counts = result.entries
+      .flatMap((entry) => entry.comments)
+      .reduce<Record<string, number>>((accumulator, comment) => {
+        const reviewer = comment.reviewer ?? 'Unknown reviewer';
+        accumulator[reviewer] = (accumulator[reviewer] ?? 0) + 1;
+        return accumulator;
+      }, {});
+
+    expect(counts).toEqual({ 'github-actions': 11, coderabbitai: 6, pedronveloso: 4 });
+    expect(result.warnings).toEqual([]);
+    expect(output.match(/^PR feedback from .+:$/gm)).toEqual([
+      'PR feedback from github-actions:',
+      'PR feedback from coderabbitai:',
+      'PR feedback from pedronveloso:'
+    ]);
+    expect(output).toContain('Human reply in bot thread 1');
+    expect(output).not.toContain('PR author reply');
+    expect(output).not.toContain('PR feedback from PR-AUTHOR:');
+    expect(output).not.toContain('Resolved feedback');
+    expect(output).not.toContain('src/resolved.ts');
+  });
+
   it('extracts feedback from PR with suggested changes, filtering out suggestion blocks', () => {
     const html = loadFixture('suggested-changes.html');
     const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -179,8 +207,8 @@ describe('fixture integration', () => {
     expect(result.claudeReview).not.toContain('Overall this is a solid PR with good test coverage and meaningful improvements.');
     expect(result.claudeReview).not.toContain('### Positives');
 
-    expect(output).toContain('PR feedback from first reviewer:');
-    expect(output).toContain('PR feedback from second reviewer:');
+    expect(output).toContain('PR feedback from Copilot:');
+    expect(output).toContain('PR feedback from claude:');
     expect(output).toContain('On `app/src/main/java/app/altsea/util/UrlCleanupUtil.kt`:');
     expect(output).toContain('### Bug Risk: `Base64.getDecoder()` vs `Base64.getUrlDecoder()`');
   });

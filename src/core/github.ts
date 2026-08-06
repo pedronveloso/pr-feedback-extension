@@ -24,6 +24,9 @@ const CLAUDE_COMMENT_SELECTORS = ['.timeline-comment', '.js-comment-container .t
 interface AutomatedCommentData {
   props?: {
     comment?: {
+      author?: {
+        login?: string;
+      };
       bodyHTML?: string;
       body?: string;
       automatedComment?: {
@@ -46,6 +49,11 @@ interface AutomatedCommentData {
 interface AutomatedMetadata {
   filePath: string | null;
   lineRange: LineRange | null;
+}
+
+interface AutomatedCommentPayload {
+  data: AutomatedCommentData;
+  element: Element;
 }
 
 export interface ThreadExtraction {
@@ -131,14 +139,44 @@ function parseAutomatedCommentData(script: Element): AutomatedCommentData | null
   }
 }
 
-function getAutomatedCommentPayloads(thread: Element): AutomatedCommentData[] {
+function getAutomatedCommentPayloads(thread: Element): AutomatedCommentPayload[] {
   return queryAll(thread, AUTOMATED_COMMENT_SELECTORS)
-    .map((script) => parseAutomatedCommentData(script))
-    .filter((data): data is AutomatedCommentData => data !== null);
+    .map((element) => ({ data: parseAutomatedCommentData(element), element }))
+    .filter((payload): payload is AutomatedCommentPayload => payload.data !== null);
 }
 
-function extractAutomatedMetadataFromPayloads(payloads: AutomatedCommentData[]): AutomatedMetadata {
-  for (const data of payloads) {
+function extractReviewerFromRoot(root: Element): string | null {
+  const reviewer = queryFirst(root, [
+    '.author',
+    '[data-testid="avatar-name"]',
+    '[data-assignee-name]',
+    'img[alt^="@"]'
+  ]);
+  const fromAttribute = reviewer?.getAttribute('data-assignee-name')?.trim();
+  const fromAlt = reviewer?.getAttribute('alt')?.trim().replace(/^@/, '');
+  const fromText = reviewer?.textContent?.trim();
+
+  return fromAttribute || fromAlt || fromText || null;
+}
+
+function extractReviewerFromComment(comment: Element): string | null {
+  const wrapper = comment.closest('.js-comment.review-comment');
+  return wrapper ? extractReviewerFromRoot(wrapper) : null;
+}
+
+function extractAutomatedReviewer(thread: Element, payload: AutomatedCommentPayload): string | null {
+  const { data, element } = payload;
+  const fromPayload = data.props?.comment?.author?.login?.trim();
+  if (fromPayload) {
+    return fromPayload;
+  }
+
+  const wrapper = element.closest('.js-comment.review-comment') ?? element.closest('react-partial') ?? thread;
+  return extractReviewerFromRoot(wrapper);
+}
+
+function extractAutomatedMetadataFromPayloads(payloads: AutomatedCommentPayload[]): AutomatedMetadata {
+  for (const { data } of payloads) {
     const diffEntry = data.props?.comment?.suggestion?.diffEntries?.[0];
     const filePath = diffEntry?.path?.trim() || null;
     const rightLines =
@@ -312,23 +350,25 @@ export function extractCommentBlocks(thread: Element, lineRange: LineRange = ext
 function extractCommentBlocksFromThread(
   thread: Element,
   lineRange: LineRange,
-  automatedPayloads: AutomatedCommentData[]
+  automatedPayloads: AutomatedCommentPayload[]
 ): FeedbackComment[] {
   const inlineComments = queryAll(thread, COMMENT_BODY_SELECTORS)
-    .map((comment) => commentBodyToMarkdown(comment))
-    .map((comment) => comment.trim())
-    .filter(Boolean)
-    .map((body) => ({ ...lineRange, body }));
+    .map((comment) => ({ body: commentBodyToMarkdown(comment).trim(), reviewer: extractReviewerFromComment(comment) }))
+    .filter((comment) => Boolean(comment.body))
+    .map(({ body, reviewer }) => ({ ...lineRange, body, reviewer }));
 
   const automatedComments = automatedPayloads
-    .map((data) => formatAutomatedCommentBody(thread, data))
-    .filter((comment): comment is string => Boolean(comment))
-    .map((body) => ({ ...lineRange, body }));
+    .map((payload) => ({
+      body: formatAutomatedCommentBody(thread, payload.data),
+      reviewer: extractAutomatedReviewer(thread, payload)
+    }))
+    .filter((comment): comment is { body: string; reviewer: string | null } => Boolean(comment.body))
+    .map(({ body, reviewer }) => ({ ...lineRange, body, reviewer }));
 
   const deduped = new Map<string, FileFeedbackEntry['comments'][number]>();
 
   for (const comment of [...inlineComments, ...automatedComments]) {
-    const key = `${comment.startLine ?? ''}:${comment.endLine ?? ''}:${comment.body}`;
+    const key = `${comment.startLine ?? ''}:${comment.endLine ?? ''}:${comment.reviewer ?? ''}:${comment.body}`;
     deduped.set(key, comment);
   }
 

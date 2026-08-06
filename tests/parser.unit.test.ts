@@ -90,13 +90,13 @@ describe('extractFeedbackFromDocument', () => {
       {
         filePath: 'src/A.kt',
         comments: [
-          { startLine: 10, endLine: 12, body: 'First' },
-          { startLine: 20, endLine: 20, body: 'Third' }
+          { startLine: 10, endLine: 12, body: 'First', reviewer: null },
+          { startLine: 20, endLine: 20, body: 'Third', reviewer: null }
         ]
       },
       {
         filePath: 'src/B.kt',
-        comments: [{ startLine: 14, endLine: 16, body: 'Second' }]
+        comments: [{ startLine: 14, endLine: 16, body: 'Second', reviewer: null }]
       }
     ]);
   });
@@ -120,7 +120,7 @@ describe('extractFeedbackFromDocument', () => {
         <div class="js-inline-comments-container">
           <react-partial partial-name="automated-review-comment">
             <script type="application/json" data-target="react-partial.embeddedData">
-              {"props":{"comment":{"bodyHTML":"<p>Guard <code>payload.name</code> length before sending.</p>"}}}
+              {"props":{"comment":{"author":{"login":"github-actions"},"bodyHTML":"<p>Guard <code>payload.name</code> length before sending.</p>"}}}
             </script>
           </react-partial>
         </div>
@@ -136,7 +136,8 @@ describe('extractFeedbackFromDocument', () => {
           {
             startLine: 27,
             endLine: 30,
-            body: 'Guard `payload.name` length before sending.'
+            body: 'Guard `payload.name` length before sending.',
+            reviewer: 'github-actions'
           }
         ]
       }
@@ -158,10 +159,10 @@ describe('extractFeedbackFromDocument', () => {
     expect(entries).toEqual([
       {
         filePath: 'src/feature.ts',
-        comments: [{ startLine: 44, endLine: 48, body: 'Fallback selectors still work.' }]
+        comments: [{ startLine: 44, endLine: 48, body: 'Fallback selectors still work.', reviewer: null }]
       }
     ]);
-    expect(warnings).toEqual([]);
+    expect(warnings).toEqual(['Could not determine the reviewer for one or more feedback comments.']);
   });
 
   it('extracts feedback from newer thread headers that expose the file path as a direct link', () => {
@@ -192,10 +193,10 @@ describe('extractFeedbackFromDocument', () => {
     expect(entries).toEqual([
       {
         filePath: 'src/feature.ts',
-        comments: [{ startLine: 44, endLine: 48, body: 'Direct header links should still work.' }]
+        comments: [{ startLine: 44, endLine: 48, body: 'Direct header links should still work.', reviewer: null }]
       }
     ]);
-    expect(warnings).toEqual([]);
+    expect(warnings).toEqual(['Could not determine the reviewer for one or more feedback comments.']);
   });
 
   it('falls back to automated review JSON metadata when file path and line range are not exposed in the thread header', () => {
@@ -240,12 +241,13 @@ describe('extractFeedbackFromDocument', () => {
           {
             startLine: 211,
             endLine: 214,
-            body: 'Reuse `Constants.WEBSITE_URL` here.'
+            body: 'Reuse `Constants.WEBSITE_URL` here.',
+            reviewer: null
           }
         ]
       }
     ]);
-    expect(warnings).toEqual([]);
+    expect(warnings).toEqual(['Could not determine the reviewer for one or more feedback comments.']);
   });
 
   it('warns when no review threads are present', () => {
