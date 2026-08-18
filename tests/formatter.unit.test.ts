@@ -97,4 +97,13 @@ describe('formatFeedback', () => {
     expect(output).toContain('Inline Claude note');
     expect(output).toContain('Summary Claude note');
   });
+
+  it('renders reviewer summaries directly and preserves their body verbatim', () => {
+    const prompt = '  Start with preserved spacing.\n\n- Keep this line.  ';
+    const output = formatFeedback([], null, [{ reviewer: 'coderabbitai', body: prompt, pageOrder: 0 }]);
+
+    expect(output).toBe(`PR feedback from coderabbitai:\n${prompt}`);
+    expect(output).not.toContain('On `');
+    expect(output).not.toContain('"""');
+  });
 });

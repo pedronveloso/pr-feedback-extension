@@ -1,5 +1,10 @@
 import { debugLog } from './debug';
-import { getFeedbackCommentPageOrder, type FeedbackComment, type FileFeedbackEntry } from './types';
+import {
+  getFeedbackCommentPageOrder,
+  type FeedbackComment,
+  type FileFeedbackEntry,
+  type ReviewerSummary
+} from './types';
 
 function formatLineRange(startLine: number | null, endLine: number | null): string | null {
   if (startLine === null && endLine === null) {
@@ -30,7 +35,11 @@ function formatFileFeedback(filePath: string, comments: FeedbackComment[]): stri
   return [`On \`${filePath}\`:`, '', blocks].join('\n');
 }
 
-function formatReviewerSections(entries: FileFeedbackEntry[], claudeReview: string | null): string[] {
+function formatReviewerSections(
+  entries: FileFeedbackEntry[],
+  claudeReview: string | null,
+  reviewerSummaries: ReviewerSummary[]
+): string[] {
   interface OrderedFileComments {
     comments: FeedbackComment[];
     firstOrder: number;
@@ -58,7 +67,7 @@ function formatReviewerSections(entries: FileFeedbackEntry[], claudeReview: stri
     }
   }
 
-  const sections = Array.from(reviewers.entries())
+  const sections: Array<{ body: string; firstOrder: number }> = Array.from(reviewers.entries())
     .sort(([, left], [, right]) => left.firstOrder - right.firstOrder)
     .map(([key, reviewer]) => {
       const name = key === 'claude' ? 'claude' : reviewer.name;
@@ -78,22 +87,40 @@ function formatReviewerSections(entries: FileFeedbackEntry[], claudeReview: stri
       if (key === 'claude' && claudeReview) {
         parts.push('', claudeReview.trim());
       }
-      return parts.join('\n');
+      return { body: parts.join('\n'), firstOrder: reviewer.firstOrder };
     });
 
   if (claudeReview && !reviewers.has('claude')) {
-    sections.push(['PR feedback from claude:', '', claudeReview.trim()].join('\n'));
+    sections.push({
+      body: ['PR feedback from claude:', '', claudeReview.trim()].join('\n'),
+      firstOrder: Number.MAX_SAFE_INTEGER
+    });
   }
 
-  return sections;
+  sections.push(
+    ...reviewerSummaries.map((summary) => ({
+      body: `PR feedback from ${summary.reviewer}:\n${summary.body}`,
+      firstOrder: summary.pageOrder
+    }))
+  );
+
+  return sections.sort((left, right) => left.firstOrder - right.firstOrder).map((section) => section.body);
 }
 
-export function formatFeedback(entries: FileFeedbackEntry[], claudeReview: string | null = null): string {
-  const sections = formatReviewerSections(entries, claudeReview);
+export function formatFeedback(
+  entries: FileFeedbackEntry[],
+  claudeReview: string | null = null,
+  reviewerSummaries: ReviewerSummary[] = []
+): string {
+  const sections = formatReviewerSections(entries, claudeReview, reviewerSummaries);
   debugLog({
     source: 'content',
     event: 'formatter:branch',
-    detail: JSON.stringify({ inlineEntryCount: entries.length, hasClaudeReview: Boolean(claudeReview) })
+    detail: JSON.stringify({
+      inlineEntryCount: entries.length,
+      hasClaudeReview: Boolean(claudeReview),
+      reviewerSummaryCount: reviewerSummaries.length
+    })
   });
 
   return sections.length > 0 ? sections.join('\n\n') : 'No review feedback comments found on this PR page.';

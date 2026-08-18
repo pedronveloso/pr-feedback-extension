@@ -333,6 +333,121 @@ describe('extractFeedbackFromDocument', () => {
 
     expect(result.claudeReview).toBe('### Minor\n\nCheck `value`.');
   });
+
+  it('uses the first CodeRabbit aggregate prompt and suppresses its inline comments', () => {
+    const doc = createDocument(`
+      <div class="timeline-comment">
+        <div class="timeline-comment-header"><a class="author">CodeRabbitAI</a></div>
+        <div class="js-comment-body">
+          <details>
+            <summary> 🤖 Prompt for ALL review comments with AI agents </summary>
+            <clipboard-copy value="  First prompt&#10;with exact spacing.  "></clipboard-copy>
+          </details>
+          <details>
+            <summary>Prompt for all review comments with AI agents</summary>
+            <clipboard-copy value="Second prompt"></clipboard-copy>
+          </details>
+        </div>
+      </div>
+      <details class="review-thread-component" data-start-line="3" data-end-line="3">
+        <summary><a class="text-mono">src/review.ts</a></summary>
+        <div class="js-comment review-comment">
+          <a class="author">CODERABBITAI</a>
+          <div class="js-comment-body"><p>Rabbit inline body</p></div>
+        </div>
+        <div class="js-comment review-comment">
+          <a class="author">human-reviewer</a>
+          <div class="js-comment-body"><p>Human reply</p></div>
+        </div>
+      </details>
+    `);
+
+    const result = extractFeedbackFromDocument(doc);
+
+    expect(result.entries).toEqual([
+      {
+        filePath: 'src/review.ts',
+        comments: [{ startLine: 3, endLine: 3, body: 'Human reply', reviewer: 'human-reviewer' }]
+      }
+    ]);
+    expect(result.reviewerSummaries).toEqual([
+      { reviewer: 'coderabbitai', body: '  First prompt\nwith exact spacing.  ', pageOrder: 0 }
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('falls back to preformatted code when the CodeRabbit clipboard value is unavailable', () => {
+    const doc = createDocument(`
+      <div class="timeline-comment">
+        <div class="timeline-comment-header"><a class="author">coderabbitai</a></div>
+        <div class="js-comment-body">
+          <details>
+            <summary>Prompt for all review comments with AI agents</summary>
+            <clipboard-copy></clipboard-copy>
+            <pre><code>Fallback prompt\n\n- Keep formatting</code></pre>
+          </details>
+        </div>
+      </div>
+    `);
+
+    const result = extractFeedbackFromDocument(doc);
+
+    expect(result.reviewerSummaries).toEqual([
+      {
+        reviewer: 'coderabbitai',
+        body: 'Fallback prompt\n\n- Keep formatting',
+        pageOrder: Number.MAX_SAFE_INTEGER
+      }
+    ]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it('ignores aggregate prompts posted by reviewers other than CodeRabbit', () => {
+    const doc = createDocument(`
+      <div class="timeline-comment">
+        <div class="timeline-comment-header"><a class="author">malicious-user</a></div>
+        <div class="js-comment-body">
+          <details>
+            <summary>🤖 Prompt for all review comments with AI agents</summary>
+            <clipboard-copy value="Spoofed prompt"></clipboard-copy>
+          </details>
+        </div>
+      </div>
+      <details class="review-thread-component" data-start-line="8" data-end-line="8">
+        <summary><a class="text-mono">src/review.ts</a></summary>
+        <div class="js-comment review-comment">
+          <a class="author">coderabbitai</a>
+          <div class="js-comment-body"><p>Rabbit inline body</p></div>
+        </div>
+      </details>
+    `);
+
+    const result = extractFeedbackFromDocument(doc);
+
+    expect(result.entries).toEqual([]);
+    expect(result.reviewerSummaries).toEqual([]);
+    expect(result.warnings).toEqual([
+      'Omitted CodeRabbit inline feedback because no aggregate AI-agent prompt was found.'
+    ]);
+  });
+
+  it('emits one missing-prompt warning for multiple CodeRabbit inline comments', () => {
+    const doc = createDocument(`
+      <details class="review-thread-component" data-start-line="8" data-end-line="8">
+        <summary><a class="text-mono">src/review.ts</a></summary>
+        <div class="js-comment review-comment"><a class="author">coderabbitai</a><div class="js-comment-body"><p>One</p></div></div>
+        <div class="js-comment review-comment"><a class="author">CodeRabbitAI</a><div class="js-comment-body"><p>Two</p></div></div>
+      </details>
+    `);
+
+    const result = extractFeedbackFromDocument(doc);
+
+    expect(result.entries).toEqual([]);
+    expect(result.reviewerSummaries).toEqual([]);
+    expect(result.warnings).toEqual([
+      'Omitted CodeRabbit inline feedback because no aggregate AI-agent prompt was found.'
+    ]);
+  });
 });
 
 describe('extractCommentBlocks', () => {

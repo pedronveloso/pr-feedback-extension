@@ -18,7 +18,7 @@ describe('fixture integration', () => {
     const doc = new DOMParser().parseFromString(html, 'text/html');
 
     const result = extractFeedbackFromDocument(doc);
-    const output = formatFeedback(result.entries, result.claudeReview);
+    const output = formatFeedback(result.entries, result.claudeReview, result.reviewerSummaries);
     const counts = result.entries
       .flatMap((entry) => entry.comments)
       .reduce<Record<string, number>>((accumulator, comment) => {
@@ -27,7 +27,14 @@ describe('fixture integration', () => {
         return accumulator;
       }, {});
 
-    expect(counts).toEqual({ 'github-actions': 11, coderabbitai: 6, pedronveloso: 4 });
+    expect(counts).toEqual({ 'github-actions': 11, pedronveloso: 4 });
+    expect(result.reviewerSummaries).toEqual([
+      {
+        reviewer: 'coderabbitai',
+        body: 'Fix every CodeRabbit finding.\n\n- Preserve this prompt exactly.\n- Keep `inline code` unchanged.',
+        pageOrder: 1
+      }
+    ]);
     expect(result.warnings).toEqual([]);
     expect(output.match(/^PR feedback from .+:$/gm)).toEqual([
       'PR feedback from github-actions:',
@@ -35,6 +42,13 @@ describe('fixture integration', () => {
       'PR feedback from pedronveloso:'
     ]);
     expect(output).toContain('Human reply in bot thread 1');
+    expect(output.match(/PR feedback from coderabbitai:/g)).toHaveLength(1);
+    expect(output).toContain(
+      'PR feedback from coderabbitai:\nFix every CodeRabbit finding.\n\n- Preserve this prompt exactly.\n- Keep `inline code` unchanged.'
+    );
+    expect(output).not.toContain('Rabbit 1');
+    expect(output).not.toContain('Rabbit 6');
+    expect(output).not.toContain('Fallback text should not be used.');
     expect(output).not.toContain('PR author reply');
     expect(output).not.toContain('PR feedback from PR-AUTHOR:');
     expect(output).not.toContain('Resolved feedback');

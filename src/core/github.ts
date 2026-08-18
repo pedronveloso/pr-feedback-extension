@@ -1,4 +1,4 @@
-import type { FeedbackComment, FileFeedbackEntry, LineRange } from './types';
+import type { FeedbackComment, FileFeedbackEntry, LineRange, ReviewerSummary } from './types';
 import { debugLog } from './debug';
 import { commentBodyToMarkdown } from './markdown';
 
@@ -20,6 +20,8 @@ const AUTOMATED_COMMENT_SELECTORS = [
   'script[data-target="react-partial.embeddedData"]'
 ];
 const CLAUDE_COMMENT_SELECTORS = ['.timeline-comment', '.js-comment-container .timeline-comment'];
+const CODE_RABBIT_REVIEWER = 'coderabbitai';
+const CODE_RABBIT_PROMPT_LABEL = /^\s*(?:🤖\s*)?prompt for all review comments with ai agents\s*$/i;
 
 interface AutomatedCommentData {
   props?: {
@@ -240,6 +242,39 @@ export function extractClaudeReview(doc: Document): string | null {
     detail: cleaned ?? '<empty>'
   });
   return cleaned;
+}
+
+export function extractCodeRabbitReviewerSummary(doc: Document): ReviewerSummary | null {
+  const timelineComments = queryAll(doc, CLAUDE_COMMENT_SELECTORS);
+
+  for (const comment of timelineComments) {
+    const author = comment.querySelector('.timeline-comment-header .author')?.textContent?.trim().toLowerCase();
+    if (author !== CODE_RABBIT_REVIEWER) {
+      continue;
+    }
+
+    for (const details of Array.from(comment.querySelectorAll('details'))) {
+      const label = details.querySelector(':scope > summary')?.textContent ?? '';
+      if (!CODE_RABBIT_PROMPT_LABEL.test(label)) {
+        continue;
+      }
+
+      const clipboardValue = details.querySelector('clipboard-copy')?.getAttribute('value');
+      const codeFallback = details.querySelector('pre code')?.textContent ?? null;
+      const body = clipboardValue?.trim() ? clipboardValue : codeFallback?.trim() ? codeFallback : null;
+      if (!body) {
+        continue;
+      }
+
+      return {
+        reviewer: CODE_RABBIT_REVIEWER,
+        body,
+        pageOrder: Array.from(doc.querySelectorAll('*')).indexOf(details)
+      };
+    }
+  }
+
+  return null;
 }
 
 function isResolvedThread(thread: Element): boolean {

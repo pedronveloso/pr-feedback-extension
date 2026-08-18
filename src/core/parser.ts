@@ -1,4 +1,4 @@
-import { extractClaudeReview, extractThreadData, findReviewThreads } from './github';
+import { extractClaudeReview, extractCodeRabbitReviewerSummary, extractThreadData, findReviewThreads } from './github';
 import { debugLog } from './debug';
 import { commentBodyToMarkdown } from './markdown';
 import { setFeedbackCommentPageOrder, type FeedbackExtractionResult, type FileFeedbackEntry } from './types';
@@ -27,17 +27,23 @@ export function extractFeedbackFromDocument(doc: Document): FeedbackExtractionRe
   const grouped = new Map<string, FileFeedbackEntry>();
   const orderedFilePaths: string[] = [];
   const claudeReview = extractClaudeReview(doc);
+  const codeRabbitSummary = extractCodeRabbitReviewerSummary(doc);
   const pullRequestAuthor = extractPullRequestAuthor(doc);
   let hasUnknownReviewer = false;
   let commentPageOrder = 0;
+  let firstCodeRabbitCommentOrder: number | null = null;
 
   const threads = findReviewThreads(doc);
   debugLog({
     source: 'content',
     event: 'extraction:thread-summary',
-    detail: JSON.stringify({ threadCount: threads.length, hasClaudeReview: Boolean(claudeReview) })
+    detail: JSON.stringify({
+      threadCount: threads.length,
+      hasClaudeReview: Boolean(claudeReview),
+      reviewerSummaryCount: codeRabbitSummary ? 1 : 0
+    })
   });
-  if (threads.length === 0 && !claudeReview) {
+  if (threads.length === 0 && !claudeReview && !codeRabbitSummary) {
     warnings.push('No review threads found. GitHub DOM may have changed or the PR has no inline feedback.');
   }
 
@@ -49,10 +55,16 @@ export function extractFeedbackFromDocument(doc: Document): FeedbackExtractionRe
     }
 
     const comments = extraction.comments.filter((comment) => {
-      setFeedbackCommentPageOrder(comment, commentPageOrder++);
+      const pageOrder = commentPageOrder++;
+      setFeedbackCommentPageOrder(comment, pageOrder);
       if (!comment.reviewer) {
         hasUnknownReviewer = true;
         return true;
+      }
+
+      if (comment.reviewer.toLowerCase() === 'coderabbitai') {
+        firstCodeRabbitCommentOrder ??= pageOrder;
+        return false;
       }
 
       return !pullRequestAuthor || comment.reviewer.toLowerCase() !== pullRequestAuthor.toLowerCase();
@@ -78,9 +90,23 @@ export function extractFeedbackFromDocument(doc: Document): FeedbackExtractionRe
     warnings.push('Could not determine the reviewer for one or more feedback comments.');
   }
 
+  if (firstCodeRabbitCommentOrder !== null && !codeRabbitSummary) {
+    warnings.push('Omitted CodeRabbit inline feedback because no aggregate AI-agent prompt was found.');
+  }
+
+  const reviewerSummaries = codeRabbitSummary
+    ? [
+        {
+          ...codeRabbitSummary,
+          pageOrder: firstCodeRabbitCommentOrder ?? Number.MAX_SAFE_INTEGER
+        }
+      ]
+    : [];
+
   return {
     entries: orderedFilePaths.map((filePath) => grouped.get(filePath)!).filter((entry) => entry.comments.length > 0),
     claudeReview,
+    reviewerSummaries,
     warnings
   };
 }

@@ -15,9 +15,16 @@ export interface FileFeedbackEntry {
   comments: FeedbackComment[];
 }
 
+export interface ReviewerSummary {
+  reviewer: string;
+  body: string;
+  pageOrder: number;
+}
+
 export interface FeedbackExtractionResult {
   entries: FileFeedbackEntry[];
   claudeReview: string | null;
+  reviewerSummaries: ReviewerSummary[];
   warnings: string[];
 }
 

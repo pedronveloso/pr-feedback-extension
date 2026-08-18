@@ -153,6 +153,9 @@ function formatDiagnosticsReport(diagnostics: ExtractFeedbackDiagnostics, headin
     ...(diagnostics.code ? [`Code: ${diagnostics.code}`] : []),
     `Review threads found: ${diagnostics.threadCount}`,
     `Extracted entries: ${diagnostics.entryCount}`,
+    ...(diagnostics.reviewerSummaryCount === undefined
+      ? []
+      : [`Reviewer summaries: ${diagnostics.reviewerSummaryCount}`]),
     `Warnings: ${diagnostics.warningCount}`,
     `Formatted output length: ${diagnostics.outputLength}`
   ];

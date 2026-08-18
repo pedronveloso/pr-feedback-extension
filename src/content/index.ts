@@ -60,14 +60,16 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     });
     const threadCount = findReviewThreads(document).length;
     const extraction = extractFeedbackFromDocument(document);
-    const output = formatFeedback(extraction.entries, extraction.claudeReview);
-    const extractedEntryCount = extraction.entries.length + (extraction.claudeReview ? 1 : 0);
+    const output = formatFeedback(extraction.entries, extraction.claudeReview, extraction.reviewerSummaries);
+    const extractedEntryCount =
+      extraction.entries.length + (extraction.claudeReview ? 1 : 0) + extraction.reviewerSummaries.length;
     debugLog({
       event: 'content:extract-success',
       detail: JSON.stringify({
         threadCount,
         entryCount: extraction.entries.length,
         hasClaudeReview: Boolean(extraction.claudeReview),
+        reviewerSummaryCount: extraction.reviewerSummaries.length,
         outputLength: output.length
       })
     });
@@ -79,6 +81,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       diagnostics: {
         threadCount,
         entryCount: extractedEntryCount,
+        reviewerSummaryCount: extraction.reviewerSummaries.length,
         warningCount: extraction.warnings.length,
         outputLength: output.length,
         warnings: extraction.warnings
@@ -96,6 +99,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       diagnostics: {
         threadCount: 0,
         entryCount: 0,
+        reviewerSummaryCount: 0,
         warningCount: 0,
         outputLength: 0,
         warnings: [],

@@ -17,6 +17,7 @@ export interface DebugLogEntry {
 export interface ExtractFeedbackDiagnostics {
   threadCount: number;
   entryCount: number;
+  reviewerSummaryCount?: number;
   warningCount: number;
   outputLength: number;
   warnings: FeedbackExtractionResult['warnings'];
@@ -106,6 +107,7 @@ function isExtractFeedbackDiagnostics(message: unknown): message is ExtractFeedb
   return (
     typeof diagnostics.threadCount === 'number' &&
     typeof diagnostics.entryCount === 'number' &&
+    (diagnostics.reviewerSummaryCount === undefined || typeof diagnostics.reviewerSummaryCount === 'number') &&
     typeof diagnostics.warningCount === 'number' &&
     typeof diagnostics.outputLength === 'number' &&
     Array.isArray(diagnostics.warnings) &&
