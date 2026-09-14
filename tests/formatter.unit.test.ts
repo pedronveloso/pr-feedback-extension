@@ -106,4 +106,49 @@ describe('formatFeedback', () => {
     expect(output).not.toContain('On `');
     expect(output).not.toContain('"""');
   });
+
+  it('removes the trailing reaction footer from inline, Claude, and reviewer-summary feedback', () => {
+    const footer = 'Useful? React with 👍 / 👎.';
+    const inlineOutput = formatFeedback([
+      {
+        filePath: 'src/footer.ts',
+        comments: [{ startLine: 4, endLine: 4, body: `Keep this inline note.\n\n${footer}\n`, reviewer: 'bot' }]
+      }
+    ]);
+    const claudeOutput = formatFeedback([], `Keep this Claude note.\n${footer}`);
+    const summaryOutput = formatFeedback([], null, [
+      { reviewer: 'coderabbitai', body: `Keep this summary note.\n\n${footer}`, pageOrder: 0 }
+    ]);
+
+    expect(inlineOutput).toContain('Keep this inline note.');
+    expect(claudeOutput).toContain('Keep this Claude note.');
+    expect(summaryOutput).toContain('Keep this summary note.');
+    expect([inlineOutput, claudeOutput, summaryOutput].join('\n')).not.toContain(footer);
+  });
+
+  it('keeps an in-body reaction footer unchanged', () => {
+    const footer = 'Useful? React with 👍 / 👎.';
+    const output = formatFeedback([], `Mention ${footer} before the actual conclusion.`);
+
+    expect(output).toContain(`Mention ${footer} before the actual conclusion.`);
+  });
+
+  it('omits feedback made empty by the trailing reaction footer', () => {
+    const footer = ' \n Useful? React with 👍 / 👎.\n\n';
+    const output = formatFeedback(
+      [
+        {
+          filePath: 'src/empty.ts',
+          comments: [{ startLine: 1, endLine: 1, body: footer, reviewer: 'bot' }]
+        }
+      ],
+      footer,
+      [{ reviewer: 'coderabbitai', body: footer, pageOrder: 0 }]
+    );
+
+    expect(output).toBe('No review feedback comments found on this PR page.');
+    expect(output).not.toContain('On `');
+    expect(output).not.toContain('"""');
+    expect(output).not.toContain('PR feedback from');
+  });
 });

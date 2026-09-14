@@ -6,6 +6,12 @@ import {
   type ReviewerSummary
 } from './types';
 
+const trailingReactionFooter = /\s*Useful\? React with 👍 \/ 👎\.\s*$/u;
+
+function removeTrailingReactionFooter(text: string): string {
+  return text.replace(trailingReactionFooter, '');
+}
+
 function formatLineRange(startLine: number | null, endLine: number | null): string | null {
   if (startLine === null && endLine === null) {
     return null;
@@ -23,10 +29,15 @@ function formatLineRange(startLine: number | null, endLine: number | null): stri
   return line === null ? null : `From line ${line}:`;
 }
 
-function formatFileFeedback(filePath: string, comments: FeedbackComment[]): string {
+interface CleanedFeedbackComment {
+  source: FeedbackComment;
+  body: string;
+}
+
+function formatFileFeedback(filePath: string, comments: CleanedFeedbackComment[]): string {
   const blocks = comments
     .map((comment) => {
-      const lineRange = formatLineRange(comment.startLine, comment.endLine);
+      const lineRange = formatLineRange(comment.source.startLine, comment.source.endLine);
       const parts = [lineRange, '"""', comment.body.trim(), '"""'].filter(Boolean);
       return parts.join('\n');
     })
@@ -41,7 +52,7 @@ function formatReviewerSections(
   reviewerSummaries: ReviewerSummary[]
 ): string[] {
   interface OrderedFileComments {
-    comments: FeedbackComment[];
+    comments: CleanedFeedbackComment[];
     firstOrder: number;
   }
 
@@ -52,16 +63,22 @@ function formatReviewerSections(
   }
 
   const reviewers = new Map<string, OrderedReviewer>();
+  const cleanedClaudeReview = claudeReview === null ? null : removeTrailingReactionFooter(claudeReview);
   let fallbackOrder = 0;
 
   for (const entry of entries) {
     for (const comment of entry.comments) {
+      const body = removeTrailingReactionFooter(comment.body);
+      if (!body.trim()) {
+        continue;
+      }
+
       const order = getFeedbackCommentPageOrder(comment) ?? fallbackOrder++;
       const name = comment.reviewer ?? 'Unknown reviewer';
       const key = name.toLowerCase();
       const reviewer = reviewers.get(key) ?? { name, files: new Map<string, OrderedFileComments>(), firstOrder: order };
       const file = reviewer.files.get(entry.filePath) ?? { comments: [], firstOrder: order };
-      file.comments.push(comment);
+      file.comments.push({ source: comment, body });
       reviewer.files.set(entry.filePath, file);
       reviewers.set(key, reviewer);
     }
@@ -78,30 +95,33 @@ function formatReviewerSections(
             filePath,
             file.comments.sort(
               (left, right) =>
-                (getFeedbackCommentPageOrder(left) ?? Number.MAX_SAFE_INTEGER) -
-                (getFeedbackCommentPageOrder(right) ?? Number.MAX_SAFE_INTEGER)
+                (getFeedbackCommentPageOrder(left.source) ?? Number.MAX_SAFE_INTEGER) -
+                (getFeedbackCommentPageOrder(right.source) ?? Number.MAX_SAFE_INTEGER)
             )
           )
         );
       const parts = [`PR feedback from ${name}:`, '', files.join('\n\n')];
-      if (key === 'claude' && claudeReview) {
-        parts.push('', claudeReview.trim());
+      if (key === 'claude' && cleanedClaudeReview?.trim()) {
+        parts.push('', cleanedClaudeReview.trim());
       }
       return { body: parts.join('\n'), firstOrder: reviewer.firstOrder };
     });
 
-  if (claudeReview && !reviewers.has('claude')) {
+  if (cleanedClaudeReview?.trim() && !reviewers.has('claude')) {
     sections.push({
-      body: ['PR feedback from claude:', '', claudeReview.trim()].join('\n'),
+      body: ['PR feedback from claude:', '', cleanedClaudeReview.trim()].join('\n'),
       firstOrder: Number.MAX_SAFE_INTEGER
     });
   }
 
   sections.push(
-    ...reviewerSummaries.map((summary) => ({
-      body: `PR feedback from ${summary.reviewer}:\n${summary.body}`,
-      firstOrder: summary.pageOrder
-    }))
+    ...reviewerSummaries
+      .map((summary) => ({ ...summary, body: removeTrailingReactionFooter(summary.body) }))
+      .filter((summary) => Boolean(summary.body.trim()))
+      .map((summary) => ({
+        body: `PR feedback from ${summary.reviewer}:\n${summary.body}`,
+        firstOrder: summary.pageOrder
+      }))
   );
 
   return sections.sort((left, right) => left.firstOrder - right.firstOrder).map((section) => section.body);
